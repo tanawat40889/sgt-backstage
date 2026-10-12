@@ -490,7 +490,7 @@ async function renderRecent() {
   const all = await recentAll();
   const ul = $('recentList');
   ul.replaceChildren();
-  $('recentBox').hidden = !all.length;
+  $('recentEmpty').hidden = all.length > 0;
 
   for (const r of all) {
     const li = el('li');

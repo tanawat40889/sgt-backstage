@@ -56,25 +56,45 @@ button.primary:hover { background: var(--grad); filter: brightness(1.08); }
 button.big { font-size: 17px; padding: 14px 34px; border-radius: 12px; }
 button:disabled { opacity: .4; cursor: not-allowed; }
 
-/* ---------- home ---------- */
-#home { min-height: 100%; display: flex; justify-content: center; padding: 12vh 16px 40px; }
-.homeBox { width: 100%; max-width: 520px; text-align: center; }
-.homeBox > p { margin: 0 0 28px; line-height: 1.6; }
+/* ---------- home: two columns on a computer screen, stacked when narrow ---------- */
+#home { min-height: 100%; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); }
 
-#recentBox { margin-top: 48px; text-align: left; }
+.hero { display: flex; align-items: center; justify-content: center; padding: 48px clamp(32px, 6vw, 96px); background: radial-gradient(90% 70% at 20% 20%, #1a1f36, var(--bg)); }
+.heroIn { width: 100%; max-width: 520px; }
+.hero h1 { font-size: clamp(38px, 4.4vw, 60px); line-height: 1.1; margin: 0 0 14px; }
+.hero .lead { margin: 0 0 34px; font-size: 18px; line-height: 1.6; color: var(--text); }
+.hero .note { margin: 14px 0 0; font-size: 13px; }
+.hero .error { margin: 10px 0 0; }
+
+.steps { list-style: none; counter-reset: step; margin: 48px 0 0; padding: 28px 0 0; border-top: 1px solid var(--border); display: grid; gap: 18px; }
+.steps li { counter-increment: step; display: grid; grid-template-columns: 30px 1fr; column-gap: 14px; }
+.steps li::before { content: counter(step); grid-row: span 2; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 700; font-size: 13px; color: #fff; background: var(--accent-soft); border: 1px solid var(--accent); }
+.steps b { font-weight: 600; }
+.steps span { font-size: 13px; color: var(--text-dim); }
+
+#recentBox { display: flex; flex-direction: column; padding: 48px clamp(24px, 3.5vw, 56px); background: var(--surface); border-left: 1px solid var(--border); min-height: 0; overflow-y: auto; }
+#recentBox h2 { margin-bottom: 16px; }
 #recentList { list-style: none; margin: 0; padding: 0; }
+#recentEmpty { margin: 0; padding: 28px 20px; line-height: 1.8; text-align: center; border: 1px dashed #333a55; border-radius: 12px; }
+#recentBox .foot { margin: auto 0 0; padding-top: 28px; font-size: 12px; line-height: 1.7; }
+
+@media (max-width: 900px) {
+  #home { grid-template-columns: 1fr; }
+  .hero { padding: 40px 24px; }
+  #recentBox { border-left: none; border-top: 1px solid var(--border); padding: 32px 24px; }
+}
 
 #recentList li {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--surface);
+  background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 12px;
   margin-bottom: 8px;
   transition: border-color .15s, background .15s;
 }
-#recentList li:hover { border-color: var(--accent); background: var(--surface-2); }
+#recentList li:hover { border-color: var(--accent); background: var(--surface-3); }
 #recentList .open {
   flex: 1;
   min-width: 0;
@@ -84,7 +104,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   background: none;
   border: none;
   text-align: left;
-  padding: 12px 14px;
+  padding: 14px 16px;
 }
 #recentList .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #recentList .when { color: var(--text-dim); font-weight: 400; font-size: 13px; flex-shrink: 0; }

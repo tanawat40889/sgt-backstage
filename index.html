@@ -12,17 +12,29 @@
 <body>
 
 <main id="home" class="view">
-  <div class="homeBox">
-    <h1>SGT Backstage</h1>
-    <p class="dim">เลือก folder ของโปรเจค ถ้ายังไม่มีไฟล์ <code>.sgtbs</code> จะสร้างให้อัตโนมัติ</p>
-    <button id="pickBtn" class="primary big">เลือก Folder</button>
-    <p id="unsupported" class="error" hidden>Browser นี้ไม่รองรับ ต้องใช้ Chrome หรือ Edge บน desktop</p>
+  <section class="hero">
+    <div class="heroIn">
+      <h1>SGT Backstage</h1>
+      <p class="lead">คุมจอ projector เพลง สไลด์ และคิวของทีม จาก browser เครื่องเดียว</p>
 
-    <section id="recentBox" hidden>
-      <h2>Folder ล่าสุด</h2>
-      <ul id="recentList"></ul>
-    </section>
-  </div>
+      <button id="pickBtn" class="primary big">เลือก Folder ของโปรเจค</button>
+      <p class="dim note">ถ้า folder ยังไม่มีไฟล์ <code>.sgtbs</code> จะสร้างให้อัตโนมัติ</p>
+      <p id="unsupported" class="error" hidden>Browser นี้ไม่รองรับ ต้องใช้ Chrome หรือ Edge บนคอมพิวเตอร์</p>
+
+      <ol class="steps">
+        <li><b>เลือก folder</b><span>งานหนึ่งงานคือหนึ่ง folder ย้ายไปเครื่องอื่นได้ทั้ง folder</span></li>
+        <li><b>ใส่ไฟล์ใน <code>media/</code></b><span>รูป วิดีโอ เพลง และสไลด์ PDF</span></li>
+        <li><b>สร้าง scene แล้วกด GO</b><span>เปิดจอ Output ไปที่ projector</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="recentBox">
+    <h2>Folder ล่าสุด</h2>
+    <ul id="recentList"></ul>
+    <p id="recentEmpty" class="dim">ยังไม่มี folder ที่เคยเปิดในเครื่องนี้<br>folder ที่เปิดแล้วจะมาอยู่ตรงนี้ กดครั้งเดียวเพื่อเปิดต่อ</p>
+    <p class="dim foot">ใช้ Chrome หรือ Edge บนคอมพิวเตอร์ · ไฟล์ทั้งหมดอยู่ในเครื่องของคุณ ไม่ถูกส่งขึ้นเว็บ</p>
+  </section>
 </main>
 
 <main id="project" class="view" hidden>
