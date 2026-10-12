@@ -1274,6 +1274,8 @@ function remoteState() {
     pdf: pdf && { name: pdf.name, page: pdf.page ?? 1 },
     // bookmarks of the file the seek bar is on (its position travels with the countdown tick)
     marks: (tp?.s.bookmarks ?? []).map(b => ({ t: b.t, name: b.name })),
+    // the files the seek bar can be put on, when the selected scene has more than one
+    files: (tp?.files ?? []).map(f => ({ id: f.id, name: f.name })),
   };
 }
 
@@ -1312,6 +1314,8 @@ function onRemote(m) {
     setTrans(m.t);
   } else if (m.cmd === 'page') {
     pdfKey(m.dir === -1 ? -1 : 1);
+  } else if (m.cmd === 'pick') {
+    pickFile(m.id);
   } else if (m.cmd === 'seek') {
     // same bar as on the control page: it moves whatever that bar is on right now
     if (Number.isFinite(m.t)) seekTo(m.t);
@@ -1405,7 +1409,7 @@ function countdownTick() {
   const msg = {
     d: best && { ...best, teams },
     // where the seek bar stands, for the remote's copy of it
-    p: tp && { mode: tp.mode, name: tp.s.name, pos: tpPos(), dur: tp.dur },
+    p: tp && { mode: tp.mode, sid: tp.s.id, name: tp.s.name, pos: tpPos(), dur: tp.dur },
   };
   cdChan.postMessage(msg);
   for (const c of conns) if (c.open) c.send(msg);
@@ -1504,18 +1508,37 @@ const tpPos = () => (tp.mode === 'live' ? tp.m.currentTime : starts.get(tp.s.id)
 
 // The selected shot wins, so a song can be lined up before it goes live;
 // with no file in the selected shot, the bar follows whatever is playing on Live.
+// { shotId, sid }: which file the bar is on, when the selected scene has several
+// (a video and its music, say). null = decide automatically.
+let tpPick = null;
+
+function pickFile(sid) {
+  const shot = editShot();
+  if (!shot?.sources.some(s => s.id === sid)) return;
+  tpPick = { shotId: shot.id, sid };
+  countdownTick();
+}
+
 function transportTarget(liveBest) {
   const shot = editShot();
-  const s = shot?.sources.find(x => (x.type === 'audio' || x.type === 'video') && urls.has(x.src));
-  if (s) {
+  const files = shot?.sources.filter(x => (x.type === 'audio' || x.type === 'video') && urls.has(x.src)) ?? [];
+  if (files.length) {
+    // a choice only holds while its scene stays selected and still has that file
+    if (tpPick && (tpPick.shotId !== shot.id || !files.some(f => f.id === tpPick.sid))) tpPick = null;
     const mine = [...(stages.live?.el.querySelectorAll('video[src], audio[src]') ?? [])]
       .filter(m => m.dataset.shot === shot.id && !m.closest('[data-out]'));
-    if (!mine.length) return { mode: 'pv', s, dur: durOf(s) };
-    // on Live: the track that is playing, or the last one once everything has finished
-    const m = mine.findLast(x => !x.paused) ?? mine.findLast(x => x.ended);
-    return m && srcOf(m) ? { mode: 'live', m, s: srcOf(m), dur: m.duration } : null;
+    if (!mine.length) {
+      const s = files.find(f => f.id === tpPick?.sid) ?? files[0];
+      return { mode: 'pv', s, dur: durOf(s), files };
+    }
+    // on Live: the chosen file, else the track that is playing, else the last one to finish
+    const m = (tpPick && mine.find(x => x.dataset.sid === tpPick.sid))
+      ?? mine.findLast(x => !x.paused) ?? mine.findLast(x => x.ended);
+    return m && srcOf(m) ? { mode: 'live', m, s: srcOf(m), dur: m.duration, files } : null;
   }
-  return liveBest && srcOf(liveBest) ? { mode: 'live', m: liveBest, s: srcOf(liveBest), dur: liveBest.duration } : null;
+  return liveBest && srcOf(liveBest)
+    ? { mode: 'live', m: liveBest, s: srcOf(liveBest), dur: liveBest.duration, files: [] }
+    : null;
 }
 
 function transportTick(liveBest) {
@@ -1533,6 +1556,17 @@ function transportTick(liveBest) {
   $('tpMode').textContent = tp ? (tp.mode === 'live' ? 'LIVE' : 'PREVIEW') : '';
   $('tpMode').className = tp?.mode ?? '';
   $('tpName').textContent = tp ? tp.s.name : 'เลือก scene ที่มีเพลง / วิดีโอ';
+  // several files in the scene: the name becomes a list to choose which one the bar moves
+  const files = tp?.files ?? [];
+  const many = files.length > 1;
+  const listKey = files.map(f => `${f.id}:${f.name}`).join('|');
+  if ($('tpPick').dataset.key !== listKey) {
+    $('tpPick').dataset.key = listKey;
+    $('tpPick').replaceChildren(...files.map(f => new Option(f.name, f.id)));
+  }
+  $('tpPick').hidden = !many;
+  $('tpName').hidden = many;
+  if (many && document.activeElement !== $('tpPick')) $('tpPick').value = tp.s.id;
   $('tpPos').textContent = tp ? fmtPos(tpPos()) : '';
   $('tpLeft').textContent = tp ? `−${fmtTime(tp.dur - tpPos())}` : '';
   if (!tp) return;
@@ -1617,9 +1651,15 @@ function seekTo(t) {
     }
     return;
   }
+  if (tp.m.paused) {
+    // a playlist song that is not playing: switch the list to it, rather than
+    // starting it on top of the one that is
+    const node = tp.m.closest('.lyr');
+    if (tp.m.dataset.pl && node._pl) node._pl.jump([...node.querySelectorAll('audio[data-pl]')].indexOf(tp.m));
+    // a finished track starts again from the new spot
+    else tp.m.play().catch(() => {});
+  }
   tp.m.currentTime = t;
-  // a finished track starts again from the new spot
-  if (tp.m.paused) tp.m.play().catch(() => {});
   // keep the projector's copy of a video in step
   const twin = stages.out?.el.querySelector(`video[data-sid="${tp.s.id}"]`);
   if (twin) {
@@ -2292,6 +2332,10 @@ $('tpSeek').onchange = () => {
   $('tpSeek').blur();
 };
 $('bmAdd').onclick = guard(addBookmark);
+$('tpPick').onchange = () => {
+  pickFile($('tpPick').value);
+  $('tpPick').blur();
+};
 // the bar starts closed, to leave the stages as much room as possible
 $('tpToggle').onclick = () => {
   const open = $('transport').hidden;

@@ -74,7 +74,18 @@
   #tpMode.pv { color: #06281c; background: var(--pv); }
   #tpName { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #tpTime { color: var(--dim); font-variant-numeric: tabular-nums; }
-  #tpSeek { width: 100%; height: 32px; margin: 0; accent-color: var(--accent); touch-action: pan-y; }
+  #tpPick { flex: 1; min-width: 0; font: inherit; font-weight: 600; color: var(--text); background: var(--surface-2); border: 1px solid #333a55; border-radius: 8px; padding: 5px 8px; }
+  #tpTrack { position: relative; height: 54px; }
+  #tpSeek { display: block; width: 100%; height: 32px; margin: 0; accent-color: var(--accent); touch-action: pan-y; }
+  /* bookmark ticks over the slider, and the time scale under it; both inset so they line
+     up with where the middle of the thumb travels */
+  #tpMarks { position: absolute; inset: 0 8px auto; height: 32px; pointer-events: none; }
+  #tpMarks i { position: absolute; top: 6px; bottom: 6px; width: 2px; margin-left: -1px; border-radius: 1px; background: #4cc2ff; }
+  #tpRuler { position: absolute; inset: 32px 8px 0; pointer-events: none; }
+  #tpRuler i { position: absolute; top: 0; width: 1px; height: 5px; background: #4a5275; }
+  #tpRuler i.big { height: 9px; background: var(--dim); }
+  #tpRuler span { position: absolute; top: 10px; transform: translateX(-50%); font-size: 10px; line-height: 1; color: var(--dim); font-variant-numeric: tabular-nums; }
+  #tpRuler span:first-of-type { transform: none; }
   #marks { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
   #marks:empty { display: none; }
   #marks button { flex-shrink: 0; padding: 6px 12px; font-size: 13px; border-radius: 99px; background: var(--surface-2); }
@@ -117,8 +128,12 @@
 
 <footer>
   <div id="tp" hidden>
-    <div id="tpTop"><span id="tpMode"></span><span id="tpName"></span><span id="tpTime"></span></div>
-    <input id="tpSeek" type="range" min="0" max="1" step="0.1" value="0">
+    <div id="tpTop"><span id="tpMode"></span><span id="tpName"></span><select id="tpPick" hidden></select><span id="tpTime"></span></div>
+    <div id="tpTrack">
+      <input id="tpSeek" type="range" min="0" max="1" step="0.1" value="0">
+      <div id="tpMarks"></div>
+      <div id="tpRuler"></div>
+    </div>
     <div id="marks"></div>
   </div>
   <div id="pdf" hidden>
@@ -261,6 +276,7 @@ function render(st) {
 
   for (const b of document.querySelectorAll('#seg button')) b.classList.toggle('active', b.dataset.t === st.trans);
   showMarks(st.marks ?? []);
+  showFiles(st.files ?? []);
   $('pdf').hidden = !st.pdf;
   if (st.pdf) $('page').replaceChildren(`${st.pdf.name} · หน้า `, el('b', '', st.pdf.page));
 }
@@ -274,17 +290,76 @@ let lastSeek = 0;
 // p: { mode: 'pv' | 'live', name, pos, dur } or null when there is nothing to seek
 function showSeek(p) {
   $('tp').hidden = !p;
-  if (!p) return;
+  if (!p) {
+    seekDur = 0;
+    return;
+  }
   $('tpMode').textContent = p.mode === 'live' ? 'LIVE' : 'PREVIEW';
   $('tpMode').className = p.mode;
   $('tpName').textContent = p.name;
+  if (document.activeElement !== $('tpPick')) $('tpPick').value = p.sid;
+  if (p.dur !== seekDur) {
+    seekDur = p.dur;
+    drawRuler();
+    drawMarkTicks();
+  }
   $('tpSeek').max = p.dur;
   if (!dragging) $('tpSeek').value = p.pos;
   const at = dragging ? Number($('tpSeek').value) : p.pos;
   $('tpTime').textContent = `${fmt(Math.floor(at))} / −${fmt(p.dur - at)}`;
 }
 
+// length of the file on the bar; the scale and bookmark ticks are laid out against it
+let seekDur = 0;
+let seekMarks = [];
+
+// same scale as the control page: a line every 5 s and a label every 30 s, widened in
+// step for long files (and narrow screens) so the labels never overlap
+function drawRuler() {
+  const r = $('tpRuler');
+  r.replaceChildren();
+  if (!seekDur) return;
+  const w = r.clientWidth || 1;
+  const major = [30, 60, 120, 300, 600, 1800, 3600].find(sec => sec / seekDur * w >= 44) ?? 3600;
+  const minor = major / 6;
+  for (let k = 0; k * minor <= seekDur; k++) {
+    const big = k % 6 === 0;
+    const tick = el('i', big ? 'big' : '');
+    tick.style.left = `${k * minor / seekDur * 100}%`;
+    r.append(tick);
+    if (big) {
+      const lab = el('span', '', fmt(k * minor));
+      lab.style.left = tick.style.left;
+      r.append(lab);
+    }
+  }
+}
+
+function drawMarkTicks() {
+  $('tpMarks').replaceChildren(...(seekDur ? seekMarks : []).map(b => {
+    const i = el('i');
+    i.style.left = `${b.t / seekDur * 100}%`;
+    return i;
+  }));
+}
+
+addEventListener('resize', drawRuler);
+
+function showFiles(files) {
+  const many = files.length > 1;
+  $('tpPick').replaceChildren(...files.map(f => new Option(f.name, f.id)));
+  $('tpPick').hidden = !many;
+  $('tpName').hidden = many;
+}
+
+$('tpPick').onchange = () => {
+  send('pick', { id: $('tpPick').value });
+  $('tpPick').blur();
+};
+
 function showMarks(marks) {
+  seekMarks = marks;
+  drawMarkTicks();
   $('marks').replaceChildren(...marks.map(b => {
     const btn = el('button', '', b.name);
     btn.append(el('span', '', fmt(Math.floor(b.t))));
