@@ -20,12 +20,20 @@
       <h1>SGT Backstage</h1>
       <p class="lead">คุมจอ projector เพลง สไลด์ และคิวของทีม จาก browser เครื่องเดียว</p>
 
-      <button id="pickBtn" class="primary big">เลือก Folder ของโปรเจค</button>
-      <p class="dim note">ถ้า folder ยังไม่มีไฟล์ <code>.sgtbs</code> จะสร้างให้อัตโนมัติ</p>
+      <div class="starts">
+        <button id="newBtn" class="primary big">
+          <b>สร้างโปรเจคใหม่</b>
+          <span>ตั้งชื่อ แล้วเลือกที่เก็บ</span>
+        </button>
+        <button id="pickBtn" class="big">
+          <b>เปิดโปรเจคที่มีอยู่</b>
+          <span>เลือก folder ที่มีไฟล์ <code>.sgtbs</code></span>
+        </button>
+      </div>
       <p id="unsupported" class="error" hidden>Browser นี้ไม่รองรับ ต้องใช้ Chrome หรือ Edge บนคอมพิวเตอร์</p>
 
       <ol class="steps">
-        <li><b>เลือก folder</b><span>งานหนึ่งงานคือหนึ่ง folder ย้ายไปเครื่องอื่นได้ทั้ง folder</span></li>
+        <li><b>สร้างโปรเจค</b><span>งานหนึ่งงานคือหนึ่ง folder ย้ายไปเครื่องอื่นได้ทั้ง folder</span></li>
         <li><b>ใส่ไฟล์ใน <code>media/</code></b><span>รูป วิดีโอ เพลง และสไลด์ PDF</span></li>
         <li><b>สร้าง scene แล้วกด GO</b><span>เปิดจอ Output ไปที่ projector</span></li>
       </ol>
@@ -193,6 +201,19 @@
     <button id="cueOk" class="primary">ใช้ JSON นี้</button>
     <button id="cueCancel">ยกเลิก</button>
   </div>
+</dialog>
+
+<dialog id="newDlg">
+  <form id="newForm" class="box">
+    <strong>สร้างโปรเจคใหม่</strong>
+    <label>ชื่อโปรเจค<input id="newName" type="text" autocomplete="off" maxlength="80" placeholder="เช่น งานเปิดตัว 2026"></label>
+    <p class="dim">ขั้นต่อไปจะให้เลือกว่าจะเก็บไว้ที่ไหน แล้วระบบจะสร้าง folder ชื่อนี้ที่นั่น พร้อมไฟล์โปรเจค <code>.sgtbs</code> และ folder <code>media/</code> สำหรับใส่ไฟล์</p>
+    <p id="newErr" class="error"></p>
+    <div class="row">
+      <button id="newCancel" type="button">ยกเลิก</button>
+      <button class="primary">เลือกที่เก็บ แล้วสร้าง</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="askDlg">

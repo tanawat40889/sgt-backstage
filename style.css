@@ -65,6 +65,15 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 .hero h1 { font-size: clamp(38px, 4.4vw, 60px); line-height: 1.1; margin: 0 0 14px; }
 .hero .lead { margin: 0 0 34px; font-size: 18px; line-height: 1.6; color: var(--text); }
 .hero .note { margin: 14px 0 0; font-size: 13px; }
+/* the two ways in, side by side: make a new project, or open one that exists */
+.starts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.starts button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px 18px; text-align: left; border-radius: 14px; }
+.starts b { font-size: 17px; font-weight: 700; }
+.starts span { font-size: 12px; font-weight: 400; opacity: .8; }
+.starts code { background: rgba(0,0,0,.25); }
+#pickBtn { background: var(--surface-2); border-color: #333a55; }
+#pickBtn:hover { background: var(--surface-3); border-color: var(--accent); }
+@media (max-width: 520px) { .starts { grid-template-columns: 1fr; } }
 .hero .error { margin: 10px 0 0; }
 
 .steps { list-style: none; counter-reset: step; margin: 48px 0 0; padding: 28px 0 0; border-top: 1px solid var(--border); display: grid; gap: 18px; }
@@ -534,6 +543,16 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ---------- confirm-delete dialog ---------- */
 /* the dialog itself has no padding, so a click that lands on it is a click outside the box */
+#newDlg { width: min(440px, calc(100% - 32px)); padding: 0; color: var(--text); background: var(--surface-2); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.65); }
+#newDlg::backdrop { background: rgba(0,0,0,.6); }
+#newDlg .box { display: flex; flex-direction: column; gap: 10px; padding: 20px; }
+#newDlg strong { font-size: 16px; }
+#newDlg label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-dim); }
+#newName { font: inherit; font-size: 16px; color: var(--text); background: var(--bg); border: 1px solid #333a55; border-radius: 8px; padding: 10px 12px; }
+#newName:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+#newDlg p { margin: 0; font-size: 12px; line-height: 1.7; }
+#newErr { min-height: 1.4em; }
+#newDlg .row { display: flex; justify-content: flex-end; gap: 8px; }
 #askDlg { width: min(380px, calc(100% - 32px)); padding: 0; color: var(--text); background: var(--surface-2); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.65); }
 #askDlg::backdrop { background: rgba(0,0,0,.6); }
 #askDlg .box { display: flex; flex-direction: column; gap: 6px; padding: 18px; }

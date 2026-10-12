@@ -427,15 +427,87 @@ async function pickScreen(s) {
 
 /* ---------- open flow ---------- */
 
-async function pickFolder() {
-  let dir;
+// the folder picker; null when the user backs out of it
+async function pickDir(id) {
   try {
-    dir = await showDirectoryPicker({ id: 'sgtobs', mode: 'readwrite' });
+    return await showDirectoryPicker({ id, mode: 'readwrite' });
   } catch (e) {
-    if (e.name === 'AbortError') return;
+    if (e.name === 'AbortError') return null;
     throw e;
   }
+}
+
+// "open an existing project": the folder that holds the .sgtbs file and media/
+// (a file picker could not do this: the browser would then hide media/ from us)
+async function openExisting() {
+  const dir = await pickDir('sgtobs');
+  if (!dir) return;
+  if (!await ensurePerm(dir)) return toast('ไม่ได้รับอนุญาตให้เข้าถึง folder', true);
+  const found = await findProjectFile(dir, EXT) ?? await findProjectFile(dir, OLD_EXT);
+  // never turn someone's ordinary folder into a project without saying so
+  if (!found && !await ask(`"${dir.name}" ยังไม่มีไฟล์โปรเจค (${EXT})`,
+    'จะสร้างโปรเจคใหม่ใน folder นี้เลยไหม จะเพิ่มไฟล์โปรเจคและ folder media/ เข้าไป', 'สร้างโปรเจคที่นี่', false)) return;
   await openFolder(dir);
+}
+
+/* "new project": name it, choose where it goes, and a folder of that name is made there */
+
+function openNewDialog() {
+  $('newName').value = '';
+  $('newErr').textContent = '';
+  $('newDlg').showModal();
+  $('newName').focus();
+}
+
+// what to tell the user when the browser cannot reach the place they picked
+const NO_ACCESS = 'browser เข้าถึงตำแหน่งนี้ไม่ได้ ลองเลือกที่เก็บอื่น (เช่น folder ที่สร้างเองใน home) หรือบน Mac ให้เปิด System Settings → Privacy & Security → Files and Folders แล้วอนุญาต browser นี้';
+
+async function createProject() {
+  const name = $('newName').value.trim();
+  $('newErr').textContent = '';
+  // each stage names itself, so a failure says where it happened
+  let step = 'ตรวจชื่อ';
+  try {
+    if (!name) throw new Error('ใส่ชื่อโปรเจคก่อน');
+    if (/[\\/:*?"<>|]/.test(name) || name.startsWith('.')) throw new Error('ชื่อมีอักขระที่ใช้ตั้งชื่อ folder ไม่ได้ ( \\ / : * ? " < > | )');
+
+    step = 'เลือกที่เก็บ';
+    const parent = await pickDir('sgtobs-new');
+    if (!parent) return;
+    if (!await ensurePerm(parent)) throw new Error('ไม่ได้รับอนุญาตให้เข้าถึง folder');
+
+    // List what is there. This proves the browser can really read the place (the picker
+    // lets a folder be chosen even when the system then refuses access to it), and
+    // finds a clash of names without guessing from an error.
+    step = 'อ่านที่เก็บ';
+    let taken = false;
+    try {
+      for await (const n of parent.keys()) if (n.toLowerCase() === name.toLowerCase()) taken = true;
+    } catch (e) {
+      throw new Error(`${NO_ACCESS} (${e.name})`);
+    }
+    // refuse to reuse a name, so nothing that is already there can be touched
+    if (taken) throw new Error(`ใน "${parent.name}" มี "${name}" อยู่แล้ว ใช้ชื่ออื่น หรือปิดหน้านี้แล้วกด "เปิดโปรเจคที่มีอยู่"`);
+
+    step = 'สร้าง folder';
+    let dir;
+    try {
+      dir = await parent.getDirectoryHandle(name, { create: true });
+    } catch (e) {
+      // "not found" while creating means the place itself could not be reached
+      throw new Error(e.name === 'NotFoundError' || e.name === 'NotAllowedError' || e.name === 'NoModificationAllowedError'
+        ? `${NO_ACCESS} (${e.name})` : e.message);
+    }
+
+    // the dialog stays up until the project is really open, so any failure is still visible
+    step = 'สร้างไฟล์โปรเจค';
+    await openFolder(dir);
+    $('newDlg').close();
+  } catch (e) {
+    console.error(`createProject failed at "${step}"`, e);
+    // a toast would sit behind the dialog
+    $('newErr').textContent = `[${step}] ${e.message}`;
+  }
 }
 
 async function openFolder(dir) {
@@ -1096,7 +1168,10 @@ async function addShot(i, def) {
 // Esc, clicking outside, or "ยกเลิก" all mean no.
 let askDone = null;
 
-function askDelete(text, detail = '') {
+const askDelete = (text, detail = '') => ask(text, detail, 'ลบ', true);
+
+// okLabel names the action; danger paints it red (for things that cannot be undone)
+function ask(text, detail, okLabel, danger) {
   // a question still on screen is answered "no" by asking another
   askDone?.(false);
   return new Promise(res => {
@@ -1108,8 +1183,10 @@ function askDelete(text, detail = '') {
     };
     $('askText').textContent = text;
     $('askDetail').textContent = detail;
+    $('askYes').textContent = okLabel;
+    $('askYes').className = danger ? 'danger' : 'primary';
     d.showModal();
-    // so a stray Enter cancels instead of deleting
+    // so a stray Enter cancels instead of going ahead
     $('askNo').focus();
   });
 }
@@ -2285,7 +2362,13 @@ function guard(fn) {
   };
 }
 
-$('pickBtn').onclick = guard(pickFolder);
+$('newBtn').onclick = openNewDialog;
+$('pickBtn').onclick = guard(openExisting);
+$('newForm').onsubmit = e => {
+  e.preventDefault();
+  createProject();
+};
+$('newCancel').onclick = () => $('newDlg').close();
 $('menuBtn').onclick = () => {
   const m = $('addMenu');
   const close = fn => async () => {
@@ -2293,7 +2376,8 @@ $('menuBtn').onclick = () => {
     await fn();
   };
   m.replaceChildren(
-    menuItem('▤', 'เปลี่ยน Folder…', close(pickFolder)),
+    menuItem('+', 'สร้างโปรเจคใหม่…', close(openNewDialog)),
+    menuItem('▤', 'เปิดโปรเจคอื่น…', close(openExisting)),
     menuItem('⌂', 'หน้าแรก', close(goHome)),
   );
   placeMenu($('menuBtn').getBoundingClientRect());
@@ -2540,7 +2624,7 @@ document.addEventListener('keydown', e => {
 addEventListener('pagehide', () => outWin?.close());
 
 if (!('showDirectoryPicker' in window)) {
-  $('pickBtn').disabled = true;
+  $('newBtn').disabled = $('pickBtn').disabled = true;
   $('unsupported').hidden = false;
 }
 
