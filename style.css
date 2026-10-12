@@ -502,6 +502,40 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 #geomPanel .row { display: flex; gap: 8px; margin-top: 12px; }
 #geomPanel .row button { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 
+/* ---------- live to YouTube panel ---------- */
+#castBtn.on { background: var(--live); border-color: transparent; color: #fff; font-variant-numeric: tabular-nums; box-shadow: 0 0 18px rgba(255,77,109,.45); }
+#castPanel {
+  position: fixed;
+  z-index: 20;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: rgba(26,30,45,.96);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.65);
+  font-size: 12px;
+}
+#castPanel strong { font-size: 14px; }
+#castPanel p { margin: 0; line-height: 1.6; }
+#castPanel p:empty { display: none; }
+#castHelper { font-weight: 600; }
+#castHelper::before { content: '●'; margin-right: 6px; }
+#castHelper.ok { color: var(--pv); }
+#castHelper.bad { color: var(--error); }
+#castHow, #castForm { display: flex; flex-direction: column; gap: 10px; }
+#castHow ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; line-height: 1.6; }
+#castPanel a { color: var(--accent-2); }
+#castPanel label { display: flex; flex-direction: column; gap: 5px; color: var(--text-dim); }
+#castPanel label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
+#castPanel label.check input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
+#castKey, #castQuality { font: inherit; width: 100%; color: var(--text); background: var(--bg); border: 1px solid #333a55; border-radius: 6px; padding: 7px 8px; }
+#castKey:focus, #castQuality:focus { outline: none; border-color: var(--accent); }
+#castGo { padding: 9px; font-size: 14px; }
+
 /* ---------- countdown share panel ---------- */
 #cdPanel {
   position: fixed;

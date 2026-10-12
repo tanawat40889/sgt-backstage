@@ -996,6 +996,257 @@ function meterTick(now = 0) {
   });
 }
 
+/* ---------- live to YouTube, through the stream helper on this computer ---------- */
+
+// stream-helper/server.js: a browser cannot speak RTMP, so that program does it for us
+const HELPER = 'http://127.0.0.1:5185';
+const CAST_SIZE = { '720p': [1280, 720], '1080p': [1920, 1080] };
+const CAST_KEY = 'sgtbs-stream-key';
+const CAST_FPS = 30;
+
+// the stream in progress, or null:
+// { rec, canvas, worker, dest, queue, sending, startedAt, poll, info }
+let cast = null;
+
+// GET when there is no body, POST otherwise (a Blob is sent as it is, anything else as JSON)
+async function helper(path, body) {
+  let r;
+  try {
+    r = await fetch(HELPER + path, body === undefined ? {} : { method: 'POST', body: body instanceof Blob ? body : JSON.stringify(body) });
+  } catch {
+    throw Object.assign(new Error('ติดต่อตัวช่วย stream ไม่ได้ (ยังเปิดอยู่ไหม)'), { offline: true });
+  }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `ตัวช่วยตอบ ${r.status}`);
+  return j;
+}
+
+// opacity along a fade, as canvas gradient stops: the same S-curve as fadeStops()
+function addFade(grad, from, to, rising) {
+  const STEPS = 12;
+  for (let k = 0; k <= STEPS; k++) {
+    const t = k / STEPS;
+    const e = t * t * t * (t * (t * 6 - 15) + 10);
+    grad.addColorStop(Math.min(1, Math.max(0, from + (to - from) * t)), `rgba(0,0,0,${rising ? e : 1 - e})`);
+  }
+}
+
+const castMask = document.createElement('canvas');
+
+// One source with soft edges: drawn on its own, the masks cut into it (as the CSS masks
+// do on screen), and the result handed back to be placed on the frame.
+function maskedSource(m, s, w, h, mx, my, mw, mh) {
+  castMask.width = Math.max(1, Math.ceil(w));
+  castMask.height = Math.max(1, Math.ceil(h));
+  const g = castMask.getContext('2d');
+  g.drawImage(m, mx, my, mw, mh);
+  g.globalCompositeOperation = 'destination-in';
+  const f = s.feather;
+  if (f && (f.l || f.t || f.r || f.b)) {
+    for (const [x1, y1, a, b] of [[w, 0, f.l, f.r], [0, h, f.t, f.b]]) {
+      const grad = g.createLinearGradient(0, 0, x1, y1);
+      addFade(grad, 0, a / 100, true);
+      addFade(grad, 1 - b / 100, 1, false);
+      g.fillStyle = grad;
+      g.fillRect(0, 0, w, h);
+    }
+  }
+  if (s.diag) {
+    // CSS "to bottom right": the line runs at right angles to the other diagonal
+    const up = s.diag.to === 'top right';
+    const len = Math.hypot(w, h);
+    const dx = h / len;
+    const dy = (up ? -w : w) / len;
+    const half = w * h / len;
+    const grad = g.createLinearGradient(w / 2 - dx * half, h / 2 - dy * half, w / 2 + dx * half, h / 2 + dy * half);
+    addFade(grad, 0.5 - s.diag.soft / 200, 0.5 + s.diag.soft / 200, false);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+  }
+  g.globalCompositeOperation = 'source-over';
+  return castMask;
+}
+
+// One frame of the Live screen. The stage is ordinary page elements, so each picture is
+// redrawn from where it really sits on screen: position, size, crop, rounded corners,
+// soft edges and a fade in progress all come along, at the stream's own resolution.
+function drawLive(cv) {
+  const g = cv.getContext('2d');
+  g.globalAlpha = 1;
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, cv.width, cv.height);
+  const el = stages.live?.el;
+  const R = el?.getBoundingClientRect();
+  if (!cur || !R?.width) return;
+  const k = Math.min(cv.width / R.width, cv.height / R.height);
+  const ox = (cv.width - R.width * k) / 2 - R.left * k;
+  const oy = (cv.height - R.height * k) / 2 - R.top * k;
+  const sources = new Map(allShots().flatMap(sh => sh.sources).map(s => [s.id, s]));
+
+  const byZ = (a, b) => (+a.style.zIndex || 0) - (+b.style.zIndex || 0);
+  for (const lyr of [...el.querySelectorAll(':scope > .lyr')].sort(byZ)) {
+    const alpha = parseFloat(getComputedStyle(lyr).opacity);
+    if (!alpha) continue;
+    for (const box of [...lyr.querySelectorAll(':scope > .src')].sort(byZ)) {
+      const view = box.firstChild;
+      const m = view.firstChild;
+      if (!(m.naturalWidth || m.videoWidth)) continue;
+      const v = view.getBoundingClientRect();
+      const r = m.getBoundingClientRect();
+      const s = sources.get(box.dataset.src);
+      const [vx, vy, vw, vh] = [v.left * k + ox, v.top * k + oy, v.width * k, v.height * k];
+      g.save();
+      g.globalAlpha = alpha;
+      g.beginPath();
+      g.roundRect(vx, vy, vw, vh, (parseFloat(getComputedStyle(view).borderTopLeftRadius) || 0) * k);
+      g.clip();
+      if (s && (s.diag || (s.feather && (s.feather.l || s.feather.t || s.feather.r || s.feather.b)))) {
+        g.drawImage(maskedSource(m, s, vw, vh, (r.left - v.left) * k, (r.top - v.top) * k, r.width * k, r.height * k), vx, vy);
+      } else {
+        g.drawImage(m, r.left * k + ox, r.top * k + oy, r.width * k, r.height * k);
+      }
+      g.restore();
+    }
+  }
+}
+
+async function startCast() {
+  if (cast) return;
+  const key = $('castKey').value.trim();
+  if (!key) throw new Error('ใส่ stream key ก่อน');
+  const info = await helper('/status');
+  if (!info.ffmpeg || !info.encoder) throw new Error('ตัวช่วยหา ffmpeg ที่ใช้ได้ไม่เจอ');
+  const quality = $('castQuality').value;
+  const [w, h] = CAST_SIZE[quality];
+
+  // picture: the Live screen redrawn on a canvas, 30 times a second
+  const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
+  drawLive(canvas);
+  const stream = canvas.captureStream(CAST_FPS);
+  // sound: the same mix the meter shows
+  audioGraph();
+  const dest = actx.createMediaStreamDestination();
+  master.connect(dest);
+  stream.addTrack(dest.stream.getAudioTracks()[0]);
+
+  await helper('/start', { key, quality });
+
+  // H.264 uses the computer's video chip; the helper re-encodes either way
+  const mimeType = ['video/webm;codecs=h264,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(t => MediaRecorder.isTypeSupported(t));
+  const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: h >= 1080 ? 12e6 : 8e6, audioBitsPerSecond: 192e3 });
+  // a timer in a worker keeps ticking when this tab is in the background
+  const worker = new Worker(URL.createObjectURL(new Blob(
+    [`setInterval(() => postMessage(0), ${1000 / CAST_FPS});`], { type: 'text/javascript' })));
+  worker.onmessage = () => drawLive(canvas);
+
+  cast = { rec, canvas, worker, dest, queue: [], sending: false, startedAt: Date.now(), info };
+  rec.ondataavailable = e => {
+    if (!cast || !e.data.size) return;
+    cast.queue.push(e.data);
+    pumpCast();
+  };
+  rec.start(250);
+  cast.poll = setInterval(guard(pollCast), 1500);
+
+  if ($('castRemember').checked) localStorage.setItem(CAST_KEY, key);
+  else localStorage.removeItem(CAST_KEY);
+  renderCast();
+}
+
+// pieces go to the helper one at a time, in order
+async function pumpCast() {
+  const c = cast;
+  if (!c || c.sending) return;
+  c.sending = true;
+  try {
+    while (cast === c && c.queue.length) await helper('/chunk', c.queue.shift());
+  } catch (e) {
+    if (cast === c) await stopCast(e.message);
+  } finally {
+    c.sending = false;
+  }
+}
+
+async function pollCast() {
+  const c = cast;
+  if (!c) return;
+  let st;
+  try {
+    st = await helper('/status');
+  } catch (e) {
+    return stopCast(e.message);
+  }
+  if (cast !== c) return;
+  if (!st.streaming) return stopCast(st.error || 'ตัวช่วยหยุด stream');
+  c.stats = st.stats;
+  renderCast();
+}
+
+// error: why it ended, when it was not the user who stopped it
+async function stopCast(error) {
+  const c = cast;
+  if (!c) return;
+  cast = null;
+  clearInterval(c.poll);
+  c.worker.terminate();
+  if (c.rec.state !== 'inactive') c.rec.stop();
+  master.disconnect(c.dest);
+  for (const t of c.rec.stream.getTracks()) t.stop();
+  await helper('/stop', {}).catch(() => {});
+  renderCast(error);
+  if (error) toast(`Live หยุด: ${error}`, true);
+}
+
+async function checkHelper() {
+  if (cast) return;
+  let info = null;
+  try {
+    info = await helper('/status');
+  } catch { /* not running: the panel explains how to start it */ }
+  cast || renderCast(undefined, info);
+}
+
+// info: the helper's /status reply, or null when it could not be reached
+function renderCast(error, info = cast?.info ?? renderCast.info ?? null) {
+  renderCast.info = info;
+  const on = !!cast;
+  const ready = !!info?.ffmpeg && !!info?.encoder;
+  $('castBtn').classList.toggle('on', on);
+  $('castBtn').textContent = on ? `● LIVE ${fmtPos((Date.now() - cast.startedAt) / 1000)}` : 'Live';
+
+  $('castHelper').className = ready ? 'ok' : 'bad';
+  $('castHelper').textContent = !info ? 'ไม่พบตัวช่วย stream ในเครื่องนี้'
+    : !info.ffmpeg ? 'พบตัวช่วยแล้ว แต่เครื่องนี้ยังไม่มี ffmpeg'
+      : !info.encoder ? 'ffmpeg ในเครื่องนี้ encode H.264 ไม่ได้'
+        : `ตัวช่วยพร้อม · ${info.rtmps ? 'ส่งแบบเข้ารหัส (RTMPS)' : 'ส่งแบบไม่เข้ารหัส (RTMP)'}${info.test ? ' · โหมดทดสอบ' : ''}`;
+  $('castHow').hidden = ready;
+  $('castForm').hidden = !ready;
+  $('castKey').disabled = $('castQuality').disabled = $('castRemember').disabled = on;
+  $('castGo').textContent = on ? 'หยุด Live' : 'เริ่ม Live';
+  $('castGo').className = on ? 'danger' : 'primary';
+
+  const st = cast?.stats;
+  // a queue of more than about three seconds means the picture is arriving late
+  const late = on && cast.queue.length > 12;
+  $('castStatus').className = error || late ? 'error' : 'dim';
+  $('castStatus').textContent = error ? error
+    : !on ? ''
+      : late ? 'ส่งไม่ทัน: เครื่องหรือเน็ตช้าเกินไป ลองลดเป็น 720p'
+        : st ? `กำลังส่ง ${st.fps} ภาพ/วินาที · ${Math.round(st.kbps)} kbps${st.speed < 0.9 ? ' · ช้ากว่าเวลาจริง' : ''}`
+          : 'กำลังเชื่อมต่อ…';
+}
+
+function toggleCastPanel() {
+  const p = $('castPanel');
+  p.hidden = !p.hidden;
+  if (p.hidden) return;
+  renderCast();
+  checkHelper();
+  const r = $('castBtn').getBoundingClientRect();
+  p.style.top = `${r.bottom + 6}px`;
+  p.style.left = `${Math.max(8, Math.min(r.left, innerWidth - p.offsetWidth - 8))}px`;
+}
+
 /* ---------- output window (projector) ---------- */
 
 async function openOutput() {
@@ -2586,6 +2837,7 @@ for (const b of document.querySelectorAll('.trans')) b.onclick = () => setTrans(
 
 document.addEventListener('pointerdown', e => {
   if (!e.target.closest('#cdPanel, #cdBtn, #roomBtn')) $('cdPanel').hidden = true;
+  if (!e.target.closest('#castPanel, #castBtn')) $('castPanel').hidden = true;
   // dragging on Preview is part of editing the picture, so it leaves the panel open
   if (!e.target.closest('#geomPanel, #geomBtn, #pvStage')) {
     $('geomPanel').hidden = true;
@@ -2621,7 +2873,27 @@ document.addEventListener('keydown', e => {
   go();
 });
 
-addEventListener('pagehide', () => outWin?.close());
+addEventListener('pagehide', () => {
+  outWin?.close();
+  // do not leave the helper sending a frozen picture after this page has gone
+  if (cast) fetch(`${HELPER}/stop`, { method: 'POST', body: '{}', keepalive: true }).catch(() => {});
+});
+
+$('castBtn').onclick = guard(toggleCastPanel);
+$('castCheck').onclick = guard(checkHelper);
+$('castGo').onclick = guard(async () => {
+  if (cast) return stopCast();
+  try {
+    await startCast();
+  } catch (e) {
+    // shown in the panel, where the cause (key, helper, ffmpeg) can be fixed
+    renderCast(e.message, e.offline ? null : undefined);
+  }
+});
+$('castKey').value = localStorage.getItem(CAST_KEY) ?? '';
+$('castRemember').checked = !!localStorage.getItem(CAST_KEY);
+// keeps the clock on the button moving
+setInterval(() => { if (cast) renderCast(); }, 1000);
 
 if (!('showDirectoryPicker' in window)) {
   $('newBtn').disabled = $('pickBtn').disabled = true;
