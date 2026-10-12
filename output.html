@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>SGT Backstage — Output</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  html, body { height: 100%; margin: 0; background: #000; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; container-type: size; font-family: "Noto Sans Thai", -apple-system, "Segoe UI", "Sarabun", Arial, sans-serif; }
+  body.idle { cursor: none; }
+  #stage { position: relative; width: min(100cqw, 100cqh * var(--ar, 1.7778)); aspect-ratio: var(--ar, 1.7778); overflow: hidden; }
+  .lyr { position: absolute; inset: 0; }
+  .src { position: absolute; overflow: hidden; display: flex; align-items: center; justify-content: center; container-type: size; }
+  .view { position: relative; flex: none; overflow: hidden; width: min(100cqw, 100cqh * var(--a, 1.7778)); aspect-ratio: var(--a, 1.7778); }
+  .view > * { position: absolute; display: block; object-fit: fill; }
+  #hint { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100; color: #ddd; background: rgba(40,40,40,.9); padding: 8px 16px; border-radius: 8px; font-size: 14px; transition: opacity .4s; }
+  body.idle #hint, :fullscreen #hint { opacity: 0; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="hint">ดับเบิลคลิก หรือกด F เพื่อเต็มจอ</div>
+
+<script>
+// the control window (opener) renders into #stage directly
+const ctl = window.opener || (parent !== window ? parent : null);
+
+function toggleFull() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
+}
+
+document.addEventListener('dblclick', toggleFull);
+document.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  if (e.code === 'KeyF') toggleFull();
+  else if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    ctl?.go?.();
+  } else if (e.code === 'ArrowRight' || e.code === 'PageDown') {
+    ctl?.pdfKey?.(1);
+  } else if (e.code === 'ArrowLeft' || e.code === 'PageUp') {
+    ctl?.pdfKey?.(-1);
+  }
+});
+
+let idle;
+document.addEventListener('mousemove', () => {
+  document.body.classList.remove('idle');
+  clearTimeout(idle);
+  idle = setTimeout(() => document.body.classList.add('idle'), 2500);
+});
+
+if (ctl?.outputReady) ctl.outputReady(window);
+else document.getElementById('hint').textContent = 'เปิดหน้านี้จากปุ่ม Output ในหน้า control';
+
+addEventListener('pagehide', () => ctl?.outputClosed?.());
+</script>
+</body>
+</html>

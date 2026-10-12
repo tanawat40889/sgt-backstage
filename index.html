@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SGT Backstage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main id="home" class="view">
+  <div class="homeBox">
+    <h1>SGT Backstage</h1>
+    <p class="dim">เลือก folder ของโปรเจค ถ้ายังไม่มีไฟล์ <code>.sgtbs</code> จะสร้างให้อัตโนมัติ</p>
+    <button id="pickBtn" class="primary big">เลือก Folder</button>
+    <p id="unsupported" class="error" hidden>Browser นี้ไม่รองรับ ต้องใช้ Chrome หรือ Edge บน desktop</p>
+
+    <section id="recentBox" hidden>
+      <h2>Folder ล่าสุด</h2>
+      <ul id="recentList"></ul>
+    </section>
+  </div>
+</main>
+
+<main id="project" class="view" hidden>
+  <header id="topbar">
+    <button id="menuBtn" title="เมนู">☰</button>
+    <div class="titleWrap">
+      <strong id="projName"></strong>
+      <span id="projPath" class="dim"></span>
+    </div>
+    <div class="actions">
+      <button id="tpToggle" title="แสดง / ซ่อนแถบเลื่อนเพลงและ bookmark">แถบเวลา ▾</button>
+      <button id="cdBtn" title="ลิงก์และ QR ของหน้า Countdown และ Remote">Countdown · Remote</button>
+      <button id="outBtn">เปิดจอ Output</button>
+    </div>
+  </header>
+
+  <section id="stages">
+    <div class="stageWrap">
+      <div class="stageLabel">Preview</div>
+      <div class="stageBox"><div id="pvStage" class="stage"></div></div>
+    </div>
+    <div id="takeCol">
+      <button id="goBtn" title="ส่ง Preview ขึ้น Live (Space / Enter)">GO</button>
+      <div id="transSeg" title="วิธีเปลี่ยนภาพเมื่อกด GO">
+        <button class="trans active" data-t="cut">Cut</button>
+        <button class="trans" data-t="smooth">Fade</button>
+      </div>
+    </div>
+    <div class="stageWrap">
+      <div class="stageLabel live"><i></i>Live<span id="cd"></span></div>
+      <div class="stageBox"><div id="liveStage" class="stage"></div></div>
+    </div>
+    <div id="meter" title="ระดับเสียง Live (dB)">
+      <div class="bar"><div class="cover"></div><i class="peak"></i></div>
+      <div class="bar"><div class="cover"></div><i class="peak"></i></div>
+      <div id="meterScale"></div>
+    </div>
+  </section>
+
+  <div id="transport" class="off" hidden>
+    <span id="tpMode"></span>
+    <span id="tpName"></span>
+    <span id="tpPos" class="num"></span>
+    <div id="tpTrack">
+      <input id="tpSeek" type="range" min="0" max="1" step="0.1" value="0" disabled title="ลากเพื่อเลื่อนตำแหน่งเพลง / วิดีโอ">
+      <div id="tpMarks"></div>
+      <div id="tpRuler"></div>
+    </div>
+    <span id="tpLeft" class="num"></span>
+    <button id="bmAdd" disabled title="จำตำแหน่งนี้ไว้">+ Bookmark</button>
+    <div id="bmList"></div>
+    <div id="plLists">
+      <div class="plCol"><div class="plHead pv">Preview</div><div id="plPv"></div></div>
+      <div class="plCol"><div class="plHead live">Live</div><div id="plLive"></div></div>
+    </div>
+  </div>
+
+  <section id="insp">
+    <span id="inspEmpty" class="dim">คลิก scene เพื่อแก้ไข</span>
+    <div id="inspBody" hidden>
+      <div class="irow">
+        <label class="grp"><span class="cap">ชื่อ scene</span><input id="shotName" type="text" autocomplete="off"></label>
+        <label class="grp" title="ตัวอักษรที่แสดงบนปุ่ม scene เว้นว่างไว้เพื่อให้ย่อจากชื่ออัตโนมัติ"><span class="cap">ตัวย่อ</span><input id="shotAbbr" type="text" maxlength="4" autocomplete="off"></label>
+        <div class="grp">
+          <span class="cap">Sources</span>
+          <button id="srcBtn" title="เลือก source ที่จะตั้งค่า เรียงลำดับ หรือลบ"></button>
+          <button id="addSrcBtn">+ เพิ่ม</button>
+        </div>
+        <button id="splitBtn" hidden title="วาง 2 ภาพแรกของ scene ให้กลืนกันตรงกลาง: ซ้ายขวา บนล่าง หรือเฉียง">แบ่ง 2 จอ ▾</button>
+        <div id="plGrp" class="grp" hidden>
+          <label title="เล่นไฟล์เสียงใน scene นี้ต่อกันตามลำดับ แทนการเล่นพร้อมกัน"><input id="plOn" type="checkbox">Playlist</label>
+          <label title="ช่วงที่เพลงเก่ากับเพลงใหม่เล่นซ้อนกัน">Cross<input id="plCross" type="number" min="0" max="30" step="0.5">วิ</label>
+          <label title="เล่นเพลงต่อกัน จบเพลงสุดท้ายแล้วกลับไปเพลงแรก (ถ้าไม่ติ๊ก Playlist จะเล่นต่อกันแบบไม่ cross)"><input id="plLoop" type="checkbox">Loop</label>
+        </div>
+        <div id="cueGrp" class="grp" hidden>
+          <button id="cueBtn" title="cue ของแต่ละทีม (JSON)"></button>
+          <input id="cueFile" type="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+
+      <div id="srcSet" class="irow none">
+        <input id="srcName" type="text" autocomplete="off" title="ชื่อ source (แก้ได้)" placeholder='กด "+ เพิ่ม" เพื่อใส่ source'>
+        <div id="pdfNav" class="grp" hidden>
+          <button id="pdfPrev" title="หน้าก่อน (← หรือ PageUp)">◀</button>
+          <label>หน้า<input id="pdfPage" type="number" min="1"></label>
+          <span id="pdfCount" class="dim"></span>
+          <button id="pdfNext" title="หน้าถัดไป (→ หรือ PageDown)">▶</button>
+        </div>
+        <label id="loopLbl" title="เล่นจบแล้วเริ่มใหม่ไปเรื่อยๆ" hidden><input id="loopOn" type="checkbox">Loop</label>
+        <span id="noGeom" class="dim" hidden>source เสียง ไม่มีการตั้งค่าตำแหน่ง</span>
+        <button id="geomBtn" hidden title="ตำแหน่ง ขนาด crop ขอบจาง และมุมโค้งของ source นี้">ปรับภาพ ▾</button>
+        <span id="geomSum" class="dim"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="layers"></section>
+</main>
+
+<div id="addMenu" hidden></div>
+
+<div id="geomPanel" hidden>
+  <div id="geom">
+    <span class="cap">ตำแหน่ง</span>
+    <label>X<input type="number" data-k="x"></label>
+    <label>Y<input type="number" data-k="y"></label>
+    <span class="cap">ขนาด</span>
+    <label>W<input type="number" data-k="w" min="1"></label>
+    <label>H<input type="number" data-k="h" min="1"></label>
+    <span class="cap">Crop %</span>
+    <label>ซ้าย<input type="number" data-c="l" min="0" max="99"></label>
+    <label>ขวา<input type="number" data-c="r" min="0" max="99"></label>
+    <span></span>
+    <label>บน<input type="number" data-c="t" min="0" max="99"></label>
+    <label>ล่าง<input type="number" data-c="b" min="0" max="99"></label>
+    <span class="cap" title="ให้ขอบภาพค่อยๆ จางหาย เพื่อกลืนกับ source ที่อยู่ข้างหลัง">ขอบจาง %</span>
+    <label>ซ้าย<input type="number" data-f="l" min="0" max="100"></label>
+    <label>ขวา<input type="number" data-f="r" min="0" max="100"></label>
+    <span></span>
+    <label>บน<input type="number" data-f="t" min="0" max="100"></label>
+    <label>ล่าง<input type="number" data-f="b" min="0" max="100"></label>
+    <span class="cap" title="ความโค้งของมุมภาพ เป็น pixel ของ canvas">มุมโค้ง</span>
+    <label>px<input type="number" data-k="radius" min="0"></label>
+    <span></span>
+  </div>
+  <div class="row">
+    <button id="fitBtn" title="คืนค่าทั้งหมดของ source นี้">เต็มจอ</button>
+    <button id="repickBtn" hidden>เลือกหน้าต่างใหม่</button>
+  </div>
+</div>
+
+<div id="cdPanel" hidden>
+  <strong>เปิดบนเครื่องอื่น</strong>
+  <p class="dim">เลือกหน้าที่ต้องการ แล้วสแกน QR หรือเปิด URL บนเครื่องนั้น</p>
+  <select id="cdTeam"></select>
+  <p id="cdWarn" class="error" hidden>ใครมีลิงก์นี้สั่งเปลี่ยน scene และกด GO ได้ ส่งให้เฉพาะคนที่ต้องควบคุม</p>
+  <canvas id="cdQr" width="220" height="220"></canvas>
+  <input id="cdUrl" type="text" readonly>
+  <div class="row">
+    <button id="cdCopy" class="primary">คัดลอก URL</button>
+    <a id="cdOpen" target="_blank" rel="noopener">เปิดในแท็บใหม่</a>
+  </div>
+  <p id="cdStatus" class="dim"></p>
+</div>
+<dialog id="cueDlg">
+  <strong>วาง JSON ของ cue</strong>
+  <textarea id="cueText" spellcheck="false" placeholder='{ "teams": { "Spotlight": [ { "time": "0:08", "cue": "เปิด spot" } ] } }'></textarea>
+  <p id="cueErr" class="error"></p>
+  <div class="row">
+    <button id="cueOk" class="primary">ใช้ JSON นี้</button>
+    <button id="cueCancel">ยกเลิก</button>
+  </div>
+</dialog>
+
+<dialog id="askDlg">
+  <div class="box">
+    <strong id="askText"></strong>
+    <p id="askDetail" class="dim"></p>
+    <div class="row">
+      <button id="askNo">ยกเลิก</button>
+      <button id="askYes" class="danger">ลบ</button>
+    </div>
+  </div>
+</dialog>
+
+<div id="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

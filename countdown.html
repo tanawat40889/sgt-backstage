@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SGT Backstage — Countdown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --ok: #34d399; --warn: #ffd166; --soon: #ff4d6d; --dim: #8990a8; --c: var(--ok); }
+  html, body { height: 100%; margin: 0; background: #0b0d14; color: #eceef6; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.5vh; padding: 3vh 4vw; box-sizing: border-box; text-align: center; font-family: "Noto Sans Thai", -apple-system, "Segoe UI", "Sarabun", Arial, sans-serif; }
+  [hidden] { display: none !important; }
+  body.warn { --c: var(--warn); }
+  body.soon { --c: var(--soon); }
+  body.idle { --c: #333a55; }
+
+  #team { font-size: min(4vw, 6vh); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #7c6cff; }
+  #time { font-size: min(30vw, 46vh); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--c); }
+  /* the cue this team does next: the line they act on, so it is the second-biggest thing */
+  #next { font-size: min(6.5vw, 11vh); font-weight: 700; line-height: 1.2; max-width: 100%; overflow-wrap: anywhere; }
+  .sub { font-size: min(3.2vw, 5vh); color: var(--dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sub b { color: #eceef6; font-weight: 600; }
+  #bar { width: 80vw; height: 1.2vh; min-height: 4px; border-radius: 99px; background: #1a1e2d; overflow: hidden; color: var(--c); }
+  #fill { height: 100%; width: 0; background: currentColor; }
+  body.idle #bar { visibility: hidden; }
+
+  #back { position: fixed; left: 2.5vw; top: 2.5vh; font-size: max(14px, min(3vw, 3.5vh)); font-weight: 600; color: var(--dim); text-decoration: none; padding: .4em .9em; border-radius: 99px; background: #1a1e2d; border: 1px solid #333a55; }
+  #back:hover { color: #eceef6; }
+
+  #teams { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+  #teams a { font-size: min(3.5vw, 4vh); font-weight: 600; color: #eceef6; text-decoration: none; padding: .4em 1em; border-radius: 99px; background: #1a1e2d; border: 1px solid #333a55; }
+</style>
+</head>
+<body class="idle">
+<a id="back" hidden>← กลับ</a>
+<div id="team" hidden></div>
+<div id="time">–:––</div>
+<div id="next" hidden></div>
+<div id="then" class="sub" hidden></div>
+<div id="now" class="sub" hidden></div>
+<div id="bar"><div id="fill"></div></div>
+<div id="track" class="sub"></div>
+<div id="teams" hidden></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// #room            -> time left on the track
+// #room/Spotlight  -> that team's cue countdown
+const [room, teamEnc] = location.hash.slice(1).split('/');
+const team = teamEnc ? decodeURIComponent(teamEnc) : null;
+addEventListener('hashchange', () => location.reload());
+
+function fmt(sec) {
+  const s = Math.max(0, Math.ceil(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor(s % 3600 / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+function setText(id, text) {
+  $(id).hidden = !text;
+  $(id).textContent = text ?? '';
+}
+
+function line(id, label, text) {
+  $(id).hidden = !text;
+  $(id).replaceChildren(label, Object.assign(document.createElement('b'), { textContent: text ?? '' }));
+}
+
+// d: { left, total, name, teams } or null when nothing with a length is live
+function show(d) {
+  $('track').textContent = d ? `${d.name} · เหลือ ${fmt(d.left)}` : '';
+  $('fill').style.width = d ? `${(1 - d.left / d.total) * 100}%` : '0';
+
+  if (team) return showTeam(d, d?.teams?.[team]);
+
+  // plain page: big number is the time left on the track
+  $('track').textContent = d ? d.name : '';
+  $('time').textContent = d ? fmt(d.left) : '–:––';
+  tone(d ? d.left : null, 30, 10);
+  const names = Object.keys(d?.teams ?? {});
+  $('teams').hidden = !names.length;
+  $('teams').replaceChildren(...names.map(n => Object.assign(document.createElement('a'), {
+    href: `#${room}/${encodeURIComponent(n)}`,
+    textContent: n,
+  })));
+}
+
+// team page: big number is the time until this team's next cue
+function showTeam(d, st) {
+  setText('team', team);
+  const nx = st?.next;
+  $('time').textContent = nx ? fmt(nx.in) : '–:––';
+  tone(nx ? nx.in : null, 10, 3);
+  setText('next', nx ? nx.text : !d ? null : st ? 'ไม่มี cue ต่อแล้ว' : 'เพลงนี้ไม่มี cue ของทีมนี้');
+  line('then', 'ถัดไป: ', st?.then && `${st.then.text} (อีก ${fmt(st.then.in)})`);
+  line('now', 'ตอนนี้: ', st?.now);
+}
+
+// colour by urgency; sec === null means nothing to count
+function tone(sec, warnAt, soonAt) {
+  document.body.classList.toggle('idle', sec == null);
+  document.body.classList.toggle('warn', sec != null && sec <= warnAt && sec > soonAt);
+  document.body.classList.toggle('soon', sec != null && sec <= soonAt);
+}
+
+// the control page sends a few times a second; silence means it is closed or unreachable
+let stale;
+function got(d) {
+  show(d);
+  clearTimeout(stale);
+  stale = setTimeout(() => show(null), 3000);
+}
+
+// the same room also carries messages for the remote control; only the countdown ones matter here
+function onMessage(m) {
+  if (m && 'd' in m) got(m.d);
+}
+
+// other devices: peer-to-peer link to the control page, retried until it is up
+function connect() {
+  const peer = new Peer();
+  let done = false;
+  const retry = () => {
+    if (done) return;
+    done = true;
+    peer.destroy();
+    setTimeout(connect, 3000);
+  };
+  peer.on('open', () => {
+    const c = peer.connect(`sgtobs-${room}`);
+    c.on('data', onMessage);
+    c.on('close', retry);
+    c.on('error', retry);
+  });
+  peer.on('error', retry);
+  peer.on('disconnected', retry);
+}
+
+// team page -> back to the page that lists the track time and every team
+if (team) {
+  $('back').href = `#${room}`;
+  $('back').hidden = false;
+}
+
+if (!room) {
+  $('track').textContent = 'เปิดหน้านี้จากลิงก์หรือ QR ในปุ่ม Countdown';
+} else {
+  show(null);
+  // same browser as the control page: works with no network
+  new BroadcastChannel(`sgtobs-countdown-${room}`).onmessage = e => onMessage(e.data);
+  const sc = document.createElement('script');
+  sc.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+  sc.onload = connect;
+  document.head.append(sc);
+}
+</script>
+</body>
+</html>

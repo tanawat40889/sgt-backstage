@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0d14">
+<title>SGT Backstage — Remote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0d14; --surface: #131622; --surface-2: #1a1e2d; --surface-3: #252a3d;
+    --border: rgba(255,255,255,.08); --text: #eceef6; --dim: #8990a8;
+    --accent: #7c6cff; --grad: linear-gradient(135deg, #7c6cff, #4cc2ff);
+    --pv: #34d399; --live: #ff4d6d;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column;
+    font-family: "Noto Sans Thai", -apple-system, "Segoe UI", Arial, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 15px;
+    /* a remote is tapped, never scrolled or zoomed by accident */
+    overscroll-behavior: none; user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  [hidden] { display: none !important; }
+  button { font: inherit; color: inherit; border: 1px solid var(--border); background: var(--surface-3); border-radius: 12px; cursor: pointer; }
+  button:active { filter: brightness(1.35); transform: scale(.97); }
+
+  header { flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  #proj { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #cd { font-weight: 700; font-variant-numeric: tabular-nums; }
+  #cd.soon { color: var(--live); }
+  #dot { width: 10px; height: 10px; border-radius: 50%; background: var(--live); flex-shrink: 0; }
+  #dot.on { background: var(--pv); }
+
+  main { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 0; }
+  .layer { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; }
+  .layer + .layer { border-top: 1px solid var(--border); }
+  .no { flex: 0 0 22px; height: 64px; display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--dim); }
+  /* phones: one row that slides sideways; tablets: wraps into a grid */
+  .row { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  @media (min-width: 700px) { .row { flex-wrap: wrap; overflow: visible; } }
+
+  .tile { flex: 0 0 84px; width: 84px; padding: 0; background: none; border: none; text-align: center; }
+  .tile .face { position: relative; height: 64px; display: flex; align-items: center; justify-content: center; border-radius: 12px; background: var(--surface-2); border: 2px solid var(--surface-3); overflow: hidden; }
+  .tile .face::before { content: ''; position: absolute; inset: 0 0 auto; height: 4px; background: var(--kind, transparent); }
+  .tile .abbr { font-size: 26px; font-weight: 800; line-height: 1; }
+  .tile .name { display: block; margin-top: 4px; font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile.none { flex-basis: 54px; width: 54px; }
+  .tile.none .face { border-style: dashed; }
+  .tile.none .abbr { font-size: 22px; font-weight: 400; color: var(--dim); }
+  .tile.pv .face { border-color: var(--pv); box-shadow: 0 0 14px rgba(52,211,153,.35); }
+  .tile.live .face { border-color: var(--live); box-shadow: 0 0 14px rgba(255,77,109,.45); }
+  .tile.pv.live .face { box-shadow: 0 0 0 2px var(--pv), 0 0 14px rgba(255,77,109,.45); }
+  .tile.pv .name, .tile.live .name { color: var(--text); }
+  .tile[data-kind=image] { --kind: #4cc2ff; }
+  .tile[data-kind=video] { --kind: #b48cff; }
+  .tile[data-kind=camera] { --kind: #ffb454; }
+  .tile[data-kind=screen] { --kind: #5eead4; }
+  .tile[data-kind=pdf] { --kind: #ff8a80; }
+  .tile[data-kind=audio], .tile[data-kind=mic] { --kind: #86efac; }
+
+  #legend { display: flex; justify-content: center; gap: 16px; padding: 4px 0 10px; font-size: 11px; color: var(--dim); }
+  #legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+  footer { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); }
+  /* seek bar of the song / video, with its bookmarks */
+  #tp { display: flex; flex-direction: column; gap: 6px; }
+  #tpTop { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  #tpMode { font-size: 10px; font-weight: 700; letter-spacing: .1em; padding: 2px 6px; border-radius: 4px; }
+  #tpMode.live { color: #fff; background: var(--live); }
+  #tpMode.pv { color: #06281c; background: var(--pv); }
+  #tpName { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #tpTime { color: var(--dim); font-variant-numeric: tabular-nums; }
+  #tpSeek { width: 100%; height: 32px; margin: 0; accent-color: var(--accent); touch-action: pan-y; }
+  #marks { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  #marks:empty { display: none; }
+  #marks button { flex-shrink: 0; padding: 6px 12px; font-size: 13px; border-radius: 99px; background: var(--surface-2); }
+  #marks button span { margin-left: 6px; color: #4cc2ff; font-variant-numeric: tabular-nums; }
+
+  #pdf { display: flex; align-items: center; gap: 10px; }
+  #pdf button { flex: 0 0 72px; height: 48px; font-size: 20px; }
+  #page { flex: 1; min-width: 0; text-align: center; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #page b { color: var(--text); }
+  #take { display: flex; gap: 10px; }
+  #seg { flex: 0 0 132px; display: flex; padding: 3px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-2); }
+  #seg button { flex: 1; border: none; background: none; color: var(--dim); font-weight: 600; border-radius: 11px; }
+  #seg button.active { background: var(--accent); color: #fff; }
+  #go { flex: 1; height: 64px; font-size: 24px; font-weight: 800; letter-spacing: .12em; border: none; background: var(--grad); color: #fff; box-shadow: 0 6px 22px rgba(124,108,255,.45); }
+
+  #wait { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; line-height: 1.7; background: rgba(11,13,20,.94); color: var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <span id="proj">SGT Backstage</span>
+  <span id="cd"></span>
+  <i id="dot" title="สถานะการเชื่อมต่อ"></i>
+</header>
+
+<main>
+  <div id="legend"><span><i style="background:var(--pv)"></i>Preview</span><span><i style="background:var(--live)"></i>Live</span></div>
+  <div id="layers"></div>
+</main>
+
+<footer>
+  <div id="tp" hidden>
+    <div id="tpTop"><span id="tpMode"></span><span id="tpName"></span><span id="tpTime"></span></div>
+    <input id="tpSeek" type="range" min="0" max="1" step="0.1" value="0">
+    <div id="marks"></div>
+  </div>
+  <div id="pdf" hidden>
+    <button id="prev">◀</button>
+    <span id="page"></span>
+    <button id="next">▶</button>
+  </div>
+  <div id="take">
+    <div id="seg">
+      <button data-t="cut">Cut</button>
+      <button data-t="smooth">Fade</button>
+    </div>
+    <button id="go">GO</button>
+  </div>
+</footer>
+
+<div id="wait">กำลังเชื่อมต่อกับหน้า control…</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// same room key as the countdown page: remote.html#<room>
+const room = location.hash.slice(1).split('/')[0];
+addEventListener('hashchange', () => location.reload());
+
+function fmt(sec) {
+  const s = Math.max(0, Math.ceil(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+/* ---------- link to the control page ---------- */
+
+// same browser as the control page: a channel that needs no network
+const chan = room ? new BroadcastChannel(`sgtobs-countdown-${room}`) : null;
+// other devices: a peer-to-peer connection, kept open and retried
+let conn = null;
+
+// Every command carries a random id, because in the control page's own browser it
+// arrives over both links and must only be carried out once.
+function send(cmd, more = {}) {
+  const msg = { cmd, n: Math.random().toString(36).slice(2), ...more };
+  chan?.postMessage(msg);
+  if (conn?.open) conn.send(msg);
+}
+
+// the control page sends the countdown several times a second, so silence means it is gone
+let stale;
+function heard() {
+  $('dot').classList.add('on');
+  clearTimeout(stale);
+  stale = setTimeout(() => {
+    $('dot').classList.remove('on');
+    $('wait').hidden = false;
+    $('wait').textContent = 'ขาดการเชื่อมต่อกับหน้า control กำลังลองใหม่…';
+  }, 4000);
+}
+
+function onMessage(m) {
+  if (!m || m.cmd) return;
+  heard();
+  if ('st' in m) render(m.st);
+  if ('p' in m) showSeek(m.p);
+  if ('d' in m) {
+    $('cd').textContent = m.d ? `−${fmt(m.d.left)}` : '';
+    $('cd').classList.toggle('soon', !!m.d && m.d.left <= 10);
+  }
+}
+
+function connect() {
+  const peer = new Peer();
+  let done = false;
+  const retry = () => {
+    if (done) return;
+    done = true;
+    conn = null;
+    peer.destroy();
+    setTimeout(connect, 3000);
+  };
+  peer.on('open', () => {
+    const c = peer.connect(`sgtobs-${room}`);
+    c.on('open', () => { conn = c; });
+    c.on('data', onMessage);
+    c.on('close', retry);
+    c.on('error', retry);
+  });
+  peer.on('error', retry);
+  peer.on('disconnected', retry);
+}
+
+/* ---------- drawing ---------- */
+
+let state = null;
+
+function tile(layer, sc) {
+  const id = sc ? sc.id : null;
+  const t = el('button', sc ? 'tile' : 'tile none');
+  if (sc) t.dataset.kind = sc.kind;
+  const face = el('span', 'face');
+  face.append(el('span', 'abbr', sc ? sc.label : '⦸'));
+  t.append(face, el('span', 'name', sc ? sc.name : 'ว่าง'));
+  t.classList.toggle('pv', state.pv[layer] === id);
+  t.classList.toggle('live', state.live[layer] === id);
+  t.onclick = () => send('select', { layer, id });
+  return t;
+}
+
+function render(st) {
+  state = st;
+  $('wait').hidden = !!st;
+  if (!st) {
+    $('wait').textContent = 'หน้า control ยังไม่ได้เปิดโปรเจค';
+    return;
+  }
+  $('proj').textContent = st.name;
+  // keep each row where the thumb left it while the tiles are redrawn
+  const scroll = [...document.querySelectorAll('.row')].map(r => r.scrollLeft);
+  $('layers').replaceChildren(...st.layers.map((scenes, i) => {
+    const row = el('div', 'row');
+    row.append(tile(i, null), ...scenes.map(sc => tile(i, sc)));
+    const wrap = el('div', 'layer');
+    wrap.append(el('span', 'no', i + 1), row);
+    return wrap;
+  }));
+  document.querySelectorAll('.row').forEach((r, i) => { r.scrollLeft = scroll[i] ?? 0; });
+
+  for (const b of document.querySelectorAll('#seg button')) b.classList.toggle('active', b.dataset.t === st.trans);
+  showMarks(st.marks ?? []);
+  $('pdf').hidden = !st.pdf;
+  if (st.pdf) $('page').replaceChildren(`${st.pdf.name} · หน้า `, el('b', '', st.pdf.page));
+}
+
+/* ---------- seek bar ---------- */
+
+// true while a finger is on the slider, so incoming positions do not fight it
+let dragging = false;
+let lastSeek = 0;
+
+// p: { mode: 'pv' | 'live', name, pos, dur } or null when there is nothing to seek
+function showSeek(p) {
+  $('tp').hidden = !p;
+  if (!p) return;
+  $('tpMode').textContent = p.mode === 'live' ? 'LIVE' : 'PREVIEW';
+  $('tpMode').className = p.mode;
+  $('tpName').textContent = p.name;
+  $('tpSeek').max = p.dur;
+  if (!dragging) $('tpSeek').value = p.pos;
+  const at = dragging ? Number($('tpSeek').value) : p.pos;
+  $('tpTime').textContent = `${fmt(Math.floor(at))} / −${fmt(p.dur - at)}`;
+}
+
+function showMarks(marks) {
+  $('marks').replaceChildren(...marks.map(b => {
+    const btn = el('button', '', b.name);
+    btn.append(el('span', '', fmt(Math.floor(b.t))));
+    btn.onclick = () => send('seek', { t: b.t });
+    return btn;
+  }));
+}
+
+for (const ev of ['pointerdown', 'touchstart']) $('tpSeek').addEventListener(ev, () => { dragging = true; }, { passive: true });
+$('tpSeek').oninput = () => {
+  // while sliding, a few seeks a second are plenty
+  if (Date.now() - lastSeek < 150) return;
+  lastSeek = Date.now();
+  send('seek', { t: Number($('tpSeek').value) });
+};
+$('tpSeek').onchange = () => {
+  dragging = false;
+  send('seek', { t: Number($('tpSeek').value) });
+};
+
+/* ---------- controls ---------- */
+
+$('go').onclick = () => send('go');
+$('prev').onclick = () => send('page', { dir: -1 });
+$('next').onclick = () => send('page', { dir: 1 });
+for (const b of document.querySelectorAll('#seg button')) b.onclick = () => send('trans', { t: b.dataset.t });
+
+if (!room) {
+  $('wait').textContent = 'เปิดหน้านี้จากลิงก์หรือ QR ในปุ่ม Countdown · Remote ของหน้า control';
+} else {
+  chan.onmessage = e => onMessage(e.data);
+  // ask for the current state; over the peer link the control page sends it on connect
+  send('hello');
+  const sc = document.createElement('script');
+  sc.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+  sc.onload = connect;
+  document.head.append(sc);
+}
+</script>
+</body>
+</html>
