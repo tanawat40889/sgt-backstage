@@ -2186,7 +2186,7 @@ const menuClosed = new Set(JSON.parse(localStorage.getItem(MENU_CLOSED_KEY) ?? '
 function menuSection(key, title, rows) {
   const sec = el('section', menuClosed.has(key) ? 'sec closed' : 'sec');
   const head = el('button', 'secHead');
-  head.append(el('span', 'arrow', '▾'), el('span', 'name', title), el('span', 'n', rows.filter(r => r.tagName === 'BUTTON').length || ''));
+  head.append(el('span', 'arrow'), el('span', 'name', title), el('span', 'n', rows.filter(r => r.tagName === 'BUTTON').length || ''));
   head.onclick = () => {
     if (!sec.classList.toggle('closed')) menuClosed.delete(key);
     else menuClosed.add(key);

@@ -440,9 +440,12 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 
 /* foldable sections of the add menu */
 #addMenu .sec + .sec { margin-top: 2px; border-top: 1px solid var(--border); padding-top: 2px; }
-#addMenu .secHead { gap: 6px; padding: 6px 8px; font-size: 11px; font-weight: 600; color: var(--text-dim); }
+#addMenu .secHead { gap: 8px; padding: 7px 8px; font-size: 12px; font-weight: 600; color: var(--text-dim); }
 #addMenu .secHead:hover { background: var(--surface-3); color: var(--text); }
-#addMenu .secHead .arrow { width: 10px; transition: transform .12s; }
+/* drawn, not a font character: a text triangle came out tiny and off-centre, and
+   looked different again once turned on its side */
+#addMenu .secHead .arrow { flex: 0 0 14px; height: 14px; display: flex; align-items: center; justify-content: center; transition: transform .15s; }
+#addMenu .secHead .arrow::before { content: ''; border: 5px solid transparent; border-top: 6px solid currentColor; border-bottom-width: 0; }
 #addMenu .secHead .name { flex: 1; }
 #addMenu .secHead .n { font-weight: 400; font-variant-numeric: tabular-nums; }
 #addMenu .sec.closed .arrow { transform: rotate(-90deg); }
