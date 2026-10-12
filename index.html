@@ -34,6 +34,7 @@
     </div>
     <div class="actions">
       <button id="tpToggle" title="แสดง / ซ่อนแถบเลื่อนเพลงและ bookmark">แถบเวลา ▾</button>
+      <button id="roomBtn" title="รหัสเชื่อมต่อของเครื่องนี้ ใช้กรอกในหน้า Countdown หรือ Remote บนเครื่องอื่น"></button>
       <button id="cdBtn" title="ลิงก์และ QR ของหน้า Countdown และ Remote">Countdown · Remote</button>
       <button id="outBtn">เปิดจอ Output</button>
     </div>
@@ -156,7 +157,8 @@
 
 <div id="cdPanel" hidden>
   <strong>เปิดบนเครื่องอื่น</strong>
-  <p class="dim">เลือกหน้าที่ต้องการ แล้วสแกน QR หรือเปิด URL บนเครื่องนั้น</p>
+  <p class="dim">สแกน QR หรือเปิด URL บนเครื่องนั้น หรือเปิดหน้า Countdown / Remote แล้วกรอกรหัสนี้</p>
+  <div id="cdCodeRow"><span class="dim">รหัสเชื่อมต่อ</span><b id="cdCode"></b></div>
   <select id="cdTeam"></select>
   <p id="cdWarn" class="error" hidden>ใครมีลิงก์นี้สั่งเปลี่ยน scene และกด GO ได้ ส่งให้เฉพาะคนที่ต้องควบคุม</p>
   <canvas id="cdQr" width="220" height="220"></canvas>

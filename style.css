@@ -485,6 +485,10 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   font-size: 12px;
 }
 #cdPanel strong { font-size: 14px; }
+#cdCodeRow { display: flex; align-items: baseline; justify-content: space-between; padding: 8px 12px; border-radius: 8px; background: var(--bg); }
+#cdCode { font-size: 24px; font-weight: 800; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+/* always on screen, so the code can be read out without opening anything */
+#roomBtn { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .04em; color: var(--accent-2); background: var(--bg); border-color: #333a55; }
 #cdPanel p { margin: 0; line-height: 1.5; }
 #cdQr { width: 100%; height: auto; border-radius: 8px; image-rendering: pixelated; }
 #cdUrl { font: inherit; width: 100%; color: var(--text); background: var(--bg); border: 1px solid #333a55; border-radius: 6px; padding: 6px 8px; }

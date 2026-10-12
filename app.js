@@ -1219,11 +1219,14 @@ const PEERJS_URL = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
 const QR_URL = 'https://unpkg.com/qrcode-generator@1.4.4/qrcode.js';
 const ROOM_KEY = 'sgtobs-room';
 
-const newRoom = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => (b % 36).toString(36)).join('');
+// six digits: short enough to read out and type on a phone
+const newRoom = () => String(crypto.getRandomValues(new Uint32Array(1))[0] % 1e6).padStart(6, '0');
+const fmtRoom = r => `${r.slice(0, 3)} ${r.slice(3)}`;
 
 // Each operator's browser owns one room; only countdown pages opened with its id see it.
 let room = localStorage.getItem(ROOM_KEY);
-if (!room) localStorage.setItem(ROOM_KEY, room = newRoom());
+// (codes saved by earlier versions were letters and digits; those are replaced)
+if (!/^\d{6}$/.test(room ?? '')) localStorage.setItem(ROOM_KEY, room = newRoom());
 
 // same-browser windows get the countdown over this, with no network at all
 let cdChan = openRoomChannel();
@@ -1316,6 +1319,12 @@ function onRemote(m) {
   sendState();
 }
 
+// the code other devices type in to find this control page
+function showRoom() {
+  $('roomBtn').textContent = `รหัส ${fmtRoom(room)}`;
+  $('cdCode').textContent = fmtRoom(room);
+}
+
 function setPeerState(st) {
   peerState = st;
   if (!$('cdPanel').hidden) renderCdPanel();
@@ -1347,6 +1356,7 @@ function startPeer() {
       cdChan.close();
       room = newRoom();
       cdChan = openRoomChannel();
+      showRoom();
       return startPeer();
     }
     setPeerState('retry');
@@ -2268,6 +2278,8 @@ $('plCross').onchange = guard(async () => {
 $('goBtn').onclick = guard(go);
 $('outBtn').onclick = guard(openOutput);
 $('cdBtn').onclick = guard(toggleCdPanel);
+$('roomBtn').onclick = guard(toggleCdPanel);
+showRoom();
 $('cdCopy').onclick = guard(copyCdUrl);
 $('cdUrl').onfocus = () => $('cdUrl').select();
 $('cdTeam').onchange = renderCdPanel;
@@ -2445,7 +2457,7 @@ for (const inp of document.querySelectorAll('#geom input')) {
 for (const b of document.querySelectorAll('.trans')) b.onclick = () => setTrans(b.dataset.t);
 
 document.addEventListener('pointerdown', e => {
-  if (!e.target.closest('#cdPanel, #cdBtn')) $('cdPanel').hidden = true;
+  if (!e.target.closest('#cdPanel, #cdBtn, #roomBtn')) $('cdPanel').hidden = true;
   // dragging on Preview is part of editing the picture, so it leaves the panel open
   if (!e.target.closest('#geomPanel, #geomBtn, #pvStage')) {
     $('geomPanel').hidden = true;

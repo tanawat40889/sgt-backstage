@@ -90,6 +90,16 @@
   #seg button.active { background: var(--accent); color: #fff; }
   #go { flex: 1; height: 64px; font-size: 24px; font-weight: 800; letter-spacing: .12em; border: none; background: var(--grad); color: #fff; box-shadow: 0 6px 22px rgba(124,108,255,.45); }
 
+
+  /* asked for when the page was opened without a code in its address */
+  #enter { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(320px, 100%); margin: 0 auto; }
+  #enter p { margin: 0; color: #8990a8; line-height: 1.6; }
+  #code { font: inherit; width: 100%; padding: 14px; font-size: 34px; font-weight: 800; letter-spacing: .14em; text-align: center; color: #eceef6; background: #131622; border: 2px solid #333a55; border-radius: 14px; font-variant-numeric: tabular-nums; }
+  #code:focus { outline: none; border-color: #7c6cff; }
+  #enter button { font: inherit; width: 100%; padding: 14px; font-size: 18px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #7c6cff, #4cc2ff); border: none; border-radius: 14px; cursor: pointer; }
+  #enter button:disabled { opacity: .4; }
+
+  #recode { margin-top: 18px; padding: 8px 18px; color: #8990a8; background: none; }
   #wait { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; line-height: 1.7; background: rgba(11,13,20,.94); color: var(--dim); }
 </style>
 </head>
@@ -125,7 +135,13 @@
   </div>
 </footer>
 
-<div id="wait">กำลังเชื่อมต่อกับหน้า control…</div>
+<div id="wait"><div><span id="waitMsg">กำลังเชื่อมต่อกับหน้า control…</span>
+<form id="enter" hidden>
+  <p>กรอกรหัสเชื่อมต่อ 6 หลัก<br>ดูได้ที่มุมขวาบนของหน้า control</p>
+  <input id="code" type="text" inputmode="numeric" autocomplete="off" maxlength="7" placeholder="000 000">
+  <button id="join" disabled>เชื่อมต่อ</button>
+</form>
+<button id="recode" hidden>ใส่รหัสใหม่</button></div></div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -165,11 +181,13 @@ function send(cmd, more = {}) {
 let stale;
 function heard() {
   $('dot').classList.add('on');
+  // back after a drop-out: the last known state is still good until a new one arrives
+  if (state) $('wait').hidden = true;
   clearTimeout(stale);
   stale = setTimeout(() => {
     $('dot').classList.remove('on');
     $('wait').hidden = false;
-    $('wait').textContent = 'ขาดการเชื่อมต่อกับหน้า control กำลังลองใหม่…';
+    $('waitMsg').textContent = `ยังไม่พบหน้า control ของรหัส ${room} กำลังลองใหม่…`;
   }, 4000);
 }
 
@@ -226,7 +244,7 @@ function render(st) {
   state = st;
   $('wait').hidden = !!st;
   if (!st) {
-    $('wait').textContent = 'หน้า control ยังไม่ได้เปิดโปรเจค';
+    $('waitMsg').textContent = 'หน้า control ยังไม่ได้เปิดโปรเจค';
     return;
   }
   $('proj').textContent = st.name;
@@ -294,12 +312,44 @@ $('prev').onclick = () => send('page', { dir: -1 });
 $('next').onclick = () => send('page', { dir: 1 });
 for (const b of document.querySelectorAll('#seg button')) b.onclick = () => send('trans', { t: b.dataset.t });
 
+
+// Opened without a code (typed address, bookmark): ask for the six digits shown on the
+// control page, then carry on as if the link had contained them.
+function askCode() {
+  const KEY = 'sgtbs-last-code';
+  const digits = () => $('code').value.replace(/\D/g, '').slice(0, 6);
+  const paint = () => {
+    const d = digits();
+    $('code').value = d.length > 3 ? `${d.slice(0, 3)} ${d.slice(3)}` : d;
+    $('join').disabled = d.length !== 6;
+  };
+  $('enter').hidden = false;
+  $('code').value = localStorage.getItem(KEY) ?? '';
+  paint();
+  $('code').oninput = paint;
+  $('enter').onsubmit = e => {
+    e.preventDefault();
+    if (digits().length !== 6) return;
+    localStorage.setItem(KEY, digits());
+    // the page reloads itself when the address gains a code
+    location.hash = digits();
+  };
+  $('code').focus();
+}
+
+// drop the code in the address and ask again (wrong code, or a different control page)
+$('recode').onclick = () => { location.hash = ''; };
+
 if (!room) {
-  $('wait').textContent = 'เปิดหน้านี้จากลิงก์หรือ QR ในปุ่ม Countdown · Remote ของหน้า control';
+  $('waitMsg').hidden = true;
+  askCode();
 } else {
+  $('recode').hidden = false;
   chan.onmessage = e => onMessage(e.data);
   // ask for the current state; over the peer link the control page sends it on connect
   send('hello');
+  // nothing heard after a few seconds: say so, and offer to change the code
+  stale = setTimeout(() => { $('waitMsg').textContent = `ยังไม่พบหน้า control ของรหัส ${room} กำลังลองใหม่…`; }, 6000);
   const sc = document.createElement('script');
   sc.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
   sc.onload = connect;
