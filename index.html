@@ -59,7 +59,6 @@
       <button id="tpToggle" title="แสดง / ซ่อนแถบเลื่อนเพลงและ bookmark">แถบเวลา ▾</button>
       <button id="roomBtn" title="รหัสเชื่อมต่อของเครื่องนี้ ใช้กรอกในหน้า Countdown หรือ Remote บนเครื่องอื่น"></button>
       <button id="cdBtn" title="ลิงก์และ QR ของหน้า Countdown และ Remote">Countdown · Remote</button>
-      <button id="castBtn" title="Live ออก YouTube ผ่านตัวช่วยในเครื่อง">Live</button>
       <button id="outBtn">เปิดจอ Output</button>
     </div>
   </header>
@@ -178,38 +177,6 @@
     <button id="fitBtn" title="คืนค่าทั้งหมดของ source นี้">เต็มจอ</button>
     <button id="repickBtn" hidden>เลือกหน้าต่างใหม่</button>
   </div>
-</div>
-
-<div id="castPanel" hidden>
-  <strong>Live ไป YouTube</strong>
-  <p id="castHelper"></p>
-
-  <div id="castHow">
-    <p class="dim">browser ส่งเข้า YouTube เองไม่ได้ ต้องเปิดโปรแกรมตัวช่วยไว้ในเครื่องนี้ก่อน</p>
-    <ol>
-      <li>ติดตั้ง <a href="https://nodejs.org" target="_blank" rel="noopener">Node.js</a> และ <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener">ffmpeg</a> (บน Mac: <code>brew install node ffmpeg</code>)</li>
-      <li>ดาวน์โหลด <a href="https://raw.githubusercontent.com/tanawat40889/sgt-backstage/main/stream-helper/server.js" target="_blank" rel="noopener">server.js</a></li>
-      <li>เปิด Terminal ใน folder ที่เก็บไฟล์ แล้วรัน <code>node server.js</code></li>
-    </ol>
-    <button id="castCheck">ตรวจอีกครั้ง</button>
-  </div>
-
-  <div id="castForm" hidden>
-    <label>Stream key จาก YouTube Studio
-      <input id="castKey" type="password" autocomplete="off" spellcheck="false" placeholder="xxxx-xxxx-xxxx-xxxx-xxxx">
-    </label>
-    <label class="check"><input id="castRemember" type="checkbox">จำ key ไว้ใน browser นี้</label>
-    <label>ความละเอียด
-      <select id="castQuality">
-        <option value="720p">720p · 3 Mbps (แนะนำ)</option>
-        <option value="1080p">1080p · 6 Mbps</option>
-      </select>
-    </label>
-    <button id="castGo" class="primary">เริ่ม Live</button>
-    <p class="dim">ส่งภาพจากจอ Live และเสียงที่ meter วัดอยู่ ผู้ชมจะเห็นช้ากว่าจริง 5–20 วินาที</p>
-  </div>
-
-  <p id="castStatus"></p>
 </div>
 
 <div id="cdPanel" hidden>
