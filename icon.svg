@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Backstage: a crew headset in the wings, between the curtains, under the working light. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2446"/>
+      <stop offset="1" stop-color="#090b12"/>
+    </linearGradient>
+    <linearGradient id="left" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9a8cff"/>
+      <stop offset="1" stop-color="#5644d8"/>
+    </linearGradient>
+    <linearGradient id="right" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6fd3ff"/>
+      <stop offset="1" stop-color="#2b78d8"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="tile"><rect width="512" height="512" rx="116"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#tile)">
+    <rect width="512" height="512" fill="url(#bg)"/>
+
+    <!-- light falling from above -->
+    <path d="M226 0h60l110 512H116z" fill="url(#beam)"/>
+
+    <!-- curtains, drawn back to either side -->
+    <path d="M0 0h150c-4 160-24 320-78 512H0z" fill="url(#left)"/>
+    <path d="M512 0H362c4 160 24 320 78 512h72z" fill="url(#right)"/>
+    <g fill="none" stroke="#000" stroke-opacity=".2" stroke-width="12" stroke-linecap="round">
+      <path d="M52 -10c-2 170-10 340-30 530"/>
+      <path d="M104 -10c-4 170-18 340-52 530"/>
+      <path d="M460 -10c2 170 10 340 30 530"/>
+      <path d="M408 -10c4 170 18 340 52 530"/>
+    </g>
+
+    <!-- stage-crew headset: band, two ear cups, microphone on a boom -->
+    <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M174 286v-14a82 82 0 0 1 164 0v14" stroke-width="26"/>
+      <path d="M176 352c0 44 22 62 62 64" stroke-width="16"/>
+    </g>
+    <rect x="150" y="270" width="52" height="92" rx="24" fill="#fff"/>
+    <rect x="310" y="270" width="52" height="92" rx="24" fill="#fff"/>
+    <rect x="232" y="400" width="52" height="32" rx="16" fill="#fff"/>
+  </g>
+</svg>

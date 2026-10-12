@@ -61,6 +61,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 
 .hero { display: flex; align-items: center; justify-content: center; padding: 48px clamp(32px, 6vw, 96px); background: radial-gradient(90% 70% at 20% 20%, #1a1f36, var(--bg)); }
 .heroIn { width: 100%; max-width: 520px; }
+.hero .logo { display: block; margin-bottom: 22px; border-radius: 17px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
 .hero h1 { font-size: clamp(38px, 4.4vw, 60px); line-height: 1.1; margin: 0 0 14px; }
 .hero .lead { margin: 0 0 34px; font-size: 18px; line-height: 1.6; color: var(--text); }
 .hero .note { margin: 14px 0 0; font-size: 13px; }
