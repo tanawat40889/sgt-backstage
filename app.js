@@ -77,12 +77,33 @@ async function remember(dir) {
   for (const r of await recentAll()) {
     if (await r.handle.isSameEntry(dir)) { id = r.id; break; }
   }
+  id ??= crypto.randomUUID();
   await store('readwrite', s => s.put({
-    id: id ?? crypto.randomUUID(),
+    id,
     name: dir.name,
     handle: dir,
     openedAt: Date.now(),
   }));
+  return id;
+}
+
+// The project open in this tab (its id in the recent list), so a refresh comes back
+// to it. Per tab, on purpose: a new tab or window still starts on the home page.
+const OPEN_KEY = 'sgtbs-open';
+
+async function resumeProject() {
+  const id = sessionStorage.getItem(OPEN_KEY);
+  const r = id && (await recentAll()).find(x => x.id === id);
+  if (!r) return sessionStorage.removeItem(OPEN_KEY);
+  // still allowed: straight back in
+  if (await r.handle.queryPermission({ mode: 'readwrite' }) === 'granted') return openFolder(r.handle);
+  // the browser wants to ask again, and only lets that happen on a click
+  $('resumeName').textContent = r.name;
+  $('resume').hidden = false;
+  $('resumeBtn').onclick = guard(async () => {
+    $('resume').hidden = true;
+    await openFolder(r.handle);
+  });
 }
 
 const forget = id => store('readwrite', s => s.delete(id));
@@ -516,7 +537,8 @@ async function openFolder(dir) {
     return;
   }
   const { fh, data, created, convertedFrom } = await loadOrCreate(dir);
-  await remember(dir);
+  sessionStorage.setItem(OPEN_KEY, await remember(dir));
+  $('resume').hidden = true;
   await closeProject();
   cur = { dir, fh, data };
   await renderProject();
@@ -527,6 +549,7 @@ async function openFolder(dir) {
 }
 
 async function goHome() {
+  sessionStorage.removeItem(OPEN_KEY);
   await closeProject();
   document.title = 'SGT Backstage';
   await renderRecent();
@@ -2636,3 +2659,12 @@ for (const db of [0, -6, -12, -24, -36, -48]) {
 meterTick();
 
 guard(renderRecent)();
+guard(async () => {
+  try {
+    await resumeProject();
+  } catch (e) {
+    // moved or deleted since: just stay on the home page
+    sessionStorage.removeItem(OPEN_KEY);
+    throw e;
+  }
+})();
