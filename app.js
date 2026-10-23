@@ -108,6 +108,21 @@ async function resumeProject() {
 
 const forget = id => store('readwrite', s => s.delete(id));
 
+// The project this tab holds the lock on: { id, release }. Two tabs saving the same
+// .sgtbs would overwrite each other's work, so a second tab is warned before opening it.
+let projLock = null;
+
+function lockProject(id) {
+  if (!navigator.locks) return Promise.resolve({ id, release() {} });
+  return new Promise(res => {
+    navigator.locks.request(`sgtbs-project-${id}`, { ifAvailable: true }, lock => {
+      if (!lock) return res(null);
+      // held until release() is called, or until this tab goes away
+      return new Promise(release => res({ id, release }));
+    });
+  });
+}
+
 /* ---------- project file ---------- */
 
 function newProject(name) {
@@ -280,6 +295,7 @@ async function closeProject() {
   stages = {};
   edit = null;
   cur = null;
+  $('unmute').hidden = true;
 }
 
 // songs play one after another when the shot is a playlist, or when its list loops
@@ -537,9 +553,15 @@ async function openFolder(dir) {
     return;
   }
   const { fh, data, created, convertedFrom } = await loadOrCreate(dir);
-  sessionStorage.setItem(OPEN_KEY, await remember(dir));
+  const id = await remember(dir);
+  const lock = projLock?.id === id ? projLock : await lockProject(id);
+  if (!lock && !await ask('โปรเจคนี้เปิดอยู่ในแท็บอื่นแล้ว',
+    'ถ้าแก้ไขทั้งสองแท็บ งานจะเขียนทับกัน ควรปิดอีกแท็บก่อน แล้วค่อยเปิดที่นี่', 'เปิดอยู่ดี', true)) return;
+  sessionStorage.setItem(OPEN_KEY, id);
   $('resume').hidden = true;
   await closeProject();
+  if (projLock !== lock) projLock?.release();
+  projLock = lock;
   cur = { dir, fh, data };
   await renderProject();
   show('project');
@@ -551,6 +573,8 @@ async function openFolder(dir) {
 async function goHome() {
   sessionStorage.removeItem(OPEN_KEY);
   await closeProject();
+  projLock?.release();
+  projLock = null;
   document.title = 'SGT Backstage';
   await renderRecent();
   show('home');
@@ -810,7 +834,7 @@ function setStage(st, ids, ms, mode) {
       node.style.transition = `opacity ${ms}ms`;
       node.style.opacity = ms ? 0 : 1;
       st.el.append(node);
-      for (const m of node.querySelectorAll('video:not([data-hold]), audio:not([data-pl])')) m.play().catch(() => {});
+      for (const m of node.querySelectorAll('video:not([data-hold]), audio:not([data-pl])')) tryPlay(m);
       node._start?.();
       if (ms) {
         node.offsetWidth;
@@ -867,6 +891,9 @@ function go() {
   actx?.resume();
   sel.live = [...sel.pv];
   pushLive(trans === 'smooth' ? SMOOTH_MS : 0);
+  // a GO from the remote, after a refresh that reopened the project by itself, may come
+  // before anyone has clicked this page, and then the browser keeps the sound off
+  setTimeout(() => { if (actx && actx.state !== 'running') showUnmute(); }, 400);
   // the start positions picked on Preview have now been used
   starts.clear();
   mark();
@@ -946,7 +973,7 @@ function runPlaylist(tracks, cross, loop) {
     const my = ++gen;
     const a = tracks[k];
     if (again) a.currentTime = 0;
-    a.play().catch(() => {});
+    tryPlay(a);
     const watch = () => {
       if (my !== gen || !a.isConnected) return;
       const last = k === tracks.length - 1;
@@ -980,6 +1007,29 @@ function runPlaylist(tracks, cross, loop) {
       play(k, true);
     },
   };
+}
+
+// Start a media element. Without a click on this page first, the browser refuses to
+// play sound: remember which ones were refused and offer a button that starts them.
+function tryPlay(m) {
+  m.play().then(() => { delete m.dataset.blocked; }, e => {
+    if (e.name !== 'NotAllowedError') return;
+    m.dataset.blocked = 1;
+    showUnmute();
+  });
+}
+
+function showUnmute() {
+  $('unmute').hidden = false;
+}
+
+// runs inside the click, which is what the browser waits for
+function unmute() {
+  $('unmute').hidden = true;
+  audioGraph();
+  for (const st of Object.values(stages)) {
+    for (const m of st.el.querySelectorAll('[data-blocked]')) tryPlay(m);
+  }
 }
 
 function dropAudio(root) {
@@ -1405,8 +1455,8 @@ function onRemote(m) {
   if (m.cmd === 'hello') return sendState(true);
   if (!cur) return;
   if (m.cmd === 'select') {
-    const l = cur.data.layers[m.layer];
-    // only ever a scene that really is on that layer, or null to empty it
+    // only a real layer index, and only a scene that really is on that layer (or null to empty it)
+    const l = Number.isInteger(m.layer) ? cur.data.layers[m.layer] : null;
     if (l && (m.id === null || l.shots.some(sh => sh.id === m.id))) selectShot(m.layer, m.id);
   } else if (m.cmd === 'go') {
     go();
@@ -1757,7 +1807,7 @@ function seekTo(t) {
     const node = tp.m.closest('.lyr');
     if (tp.m.dataset.pl && node._pl) node._pl.jump([...node.querySelectorAll('audio[data-pl]')].indexOf(tp.m));
     // a finished track starts again from the new spot
-    else tp.m.play().catch(() => {});
+    else tryPlay(tp.m);
   }
   tp.m.currentTime = t;
   // keep the projector's copy of a video in step
@@ -1808,14 +1858,17 @@ function bookmarkChip(s, b) {
   jump.onclick = () => seekTo(b.t);
   jump.ondblclick = () => {
     const inp = Object.assign(el('input'), { type: 'text', value: b.name });
+    let cancel = false;
     const commit = guard(async () => {
+      if (cancel) return renderBookmarks();
       b.name = inp.value.trim() || b.name;
       await save();
       renderBookmarks();
     });
     inp.onblur = commit;
     inp.onkeydown = e => {
-      if (e.key === 'Enter' || e.key === 'Escape') inp.blur();
+      cancel = e.key === 'Escape';
+      if (e.key === 'Enter' || cancel) inp.blur();
     };
     jump.replaceWith(inp);
     inp.focus();
@@ -2423,6 +2476,7 @@ $('plCross').onchange = guard(async () => {
   await shotChanged(shot);
 });
 $('goBtn').onclick = guard(go);
+$('unmute').onclick = unmute;
 $('outBtn').onclick = guard(openOutput);
 $('cdBtn').onclick = guard(toggleCdPanel);
 $('roomBtn').onclick = guard(toggleCdPanel);
@@ -2432,6 +2486,8 @@ $('cdUrl').onfocus = () => $('cdUrl').select();
 $('cdTeam').onchange = renderCdPanel;
 
 $('tpSeek').onpointerdown = () => { tpDrag = true; };
+// a click that leaves the value where it was fires no change event: end the drag on release
+for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { tpDrag = false; });
 $('tpSeek').oninput = () => seekTo(Number($('tpSeek').value));
 $('tpSeek').onchange = () => {
   tpDrag = false;

@@ -371,6 +371,8 @@ function showMarks(marks) {
 }
 
 for (const ev of ['pointerdown', 'touchstart']) $('tpSeek').addEventListener(ev, () => { dragging = true; }, { passive: true });
+// a tap that leaves the value where it was fires no change event: end the drag on release
+for (const ev of ['pointerup', 'pointercancel', 'touchend', 'touchcancel']) addEventListener(ev, () => { dragging = false; }, { passive: true });
 $('tpSeek').oninput = () => {
   // while sliding, a few seeks a second are plenty
   if (Date.now() - lastSeek < 150) return;
