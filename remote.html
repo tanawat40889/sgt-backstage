@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#0b0d14">
+<meta name="theme-color" content="#000000">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>SGT Backstage — Remote</title>
@@ -12,10 +12,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0b0d14; --surface: #131622; --surface-2: #1a1e2d; --surface-3: #252a3d;
-    --border: rgba(255,255,255,.08); --text: #eceef6; --dim: #8990a8;
-    --accent: #7c6cff; --grad: linear-gradient(135deg, #7c6cff, #4cc2ff);
-    --pv: #34d399; --live: #ff4d6d;
+    --bg: #000000; --surface: #0a0a0a; --surface-2: #111111; --surface-3: #1a1a1a;
+    --border: rgba(255,255,255,.08); --text: #ededed; --dim: #8a8a8a;
+    --accent: #14b8a6; --grad: linear-gradient(135deg, #0b8f80, #19c2ab 60%, #5eead4);
+    --pv: #4ade80; --live: #ff4d6d;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; margin: 0; }
@@ -27,6 +27,11 @@
     overscroll-behavior: none; user-select: none; -webkit-user-select: none; touch-action: manipulation;
   }
   [hidden] { display: none !important; }
+  body { background: radial-gradient(80% 50% at 50% 0%, rgba(20,184,166,.07), transparent 70%), var(--bg); }
+  header, footer { background: rgba(8,8,8,.85); backdrop-filter: blur(12px); }
+  .tile .face { border-radius: 16px; background: linear-gradient(160deg, #161616, #0a0a0a); }
+  #go { border-radius: 16px; box-shadow: 0 0 0 1px rgba(94,234,212,.25) inset, 0 8px 28px rgba(20,184,166,.3); }
+  #seg { border-radius: 16px; }
   button { font: inherit; color: inherit; border: 1px solid var(--border); background: var(--surface-3); border-radius: 12px; cursor: pointer; }
   button:active { filter: brightness(1.35); transform: scale(.97); }
 
@@ -53,11 +58,11 @@
   .tile.none { flex-basis: 54px; width: 54px; }
   .tile.none .face { border-style: dashed; }
   .tile.none .abbr { font-size: 22px; font-weight: 400; color: var(--dim); }
-  .tile.pv .face { border-color: var(--pv); box-shadow: 0 0 14px rgba(52,211,153,.35); }
+  .tile.pv .face { border-color: var(--pv); box-shadow: 0 0 14px rgba(74,222,128,.35); }
   .tile.live .face { border-color: var(--live); box-shadow: 0 0 14px rgba(255,77,109,.45); }
   .tile.pv.live .face { box-shadow: 0 0 0 2px var(--pv), 0 0 14px rgba(255,77,109,.45); }
   .tile.pv .name, .tile.live .name { color: var(--text); }
-  .tile[data-kind=image] { --kind: #4cc2ff; }
+  .tile[data-kind=image] { --kind: #5eead4; }
   .tile[data-kind=video] { --kind: #b48cff; }
   .tile[data-kind=camera] { --kind: #ffb454; }
   .tile[data-kind=screen] { --kind: #5eead4; }
@@ -76,22 +81,22 @@
   #tpMode.pv { color: #06281c; background: var(--pv); }
   #tpName { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #tpTime { color: var(--dim); font-variant-numeric: tabular-nums; }
-  #tpPick { flex: 1; min-width: 0; font: inherit; font-weight: 600; color: var(--text); background: var(--surface-2); border: 1px solid #333a55; border-radius: 8px; padding: 5px 8px; }
+  #tpPick { flex: 1; min-width: 0; font: inherit; font-weight: 600; color: var(--text); background: var(--surface-2); border: 1px solid #262626; border-radius: 8px; padding: 5px 8px; }
   #tpTrack { position: relative; height: 54px; }
   #tpSeek { display: block; width: 100%; height: 32px; margin: 0; accent-color: var(--accent); touch-action: pan-y; }
   /* bookmark ticks over the slider, and the time scale under it; both inset so they line
      up with where the middle of the thumb travels */
   #tpMarks { position: absolute; inset: 0 8px auto; height: 32px; pointer-events: none; }
-  #tpMarks i { position: absolute; top: 6px; bottom: 6px; width: 2px; margin-left: -1px; border-radius: 1px; background: #4cc2ff; }
+  #tpMarks i { position: absolute; top: 6px; bottom: 6px; width: 2px; margin-left: -1px; border-radius: 1px; background: #5eead4; }
   #tpRuler { position: absolute; inset: 32px 8px 0; pointer-events: none; }
-  #tpRuler i { position: absolute; top: 0; width: 1px; height: 5px; background: #4a5275; }
+  #tpRuler i { position: absolute; top: 0; width: 1px; height: 5px; background: #3a3a3a; }
   #tpRuler i.big { height: 9px; background: var(--dim); }
   #tpRuler span { position: absolute; top: 10px; transform: translateX(-50%); font-size: 10px; line-height: 1; color: var(--dim); font-variant-numeric: tabular-nums; }
   #tpRuler span:first-of-type { transform: none; }
   #marks { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
   #marks:empty { display: none; }
   #marks button { flex-shrink: 0; padding: 6px 12px; font-size: 13px; border-radius: 99px; background: var(--surface-2); }
-  #marks button span { margin-left: 6px; color: #4cc2ff; font-variant-numeric: tabular-nums; }
+  #marks button span { margin-left: 6px; color: #5eead4; font-variant-numeric: tabular-nums; }
 
   #pdf { display: flex; align-items: center; gap: 10px; }
   #pdf button { flex: 0 0 72px; height: 48px; font-size: 20px; }
@@ -101,18 +106,18 @@
   #seg { flex: 0 0 132px; display: flex; padding: 3px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-2); }
   #seg button { flex: 1; border: none; background: none; color: var(--dim); font-weight: 600; border-radius: 11px; }
   #seg button.active { background: var(--accent); color: #fff; }
-  #go { flex: 1; height: 64px; font-size: 24px; font-weight: 800; letter-spacing: .12em; border: none; background: var(--grad); color: #fff; box-shadow: 0 6px 22px rgba(124,108,255,.45); }
+  #go { flex: 1; height: 64px; font-size: 24px; font-weight: 800; letter-spacing: .12em; border: none; background: var(--grad); color: #fff; box-shadow: 0 6px 22px rgba(20,184,166,.45); }
 
 
   /* asked for when the page was opened without a code in its address */
   #enter { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(320px, 100%); margin: 0 auto; }
-  #enter p { margin: 0; color: #8990a8; line-height: 1.6; }
-  #code { font: inherit; width: 100%; padding: 14px; font-size: 34px; font-weight: 800; letter-spacing: .14em; text-align: center; color: #eceef6; background: #131622; border: 2px solid #333a55; border-radius: 14px; font-variant-numeric: tabular-nums; }
-  #code:focus { outline: none; border-color: #7c6cff; }
-  #enter button { font: inherit; width: 100%; padding: 14px; font-size: 18px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #7c6cff, #4cc2ff); border: none; border-radius: 14px; cursor: pointer; }
+  #enter p { margin: 0; color: #8a8a8a; line-height: 1.6; }
+  #code { font: inherit; width: 100%; padding: 14px; font-size: 34px; font-weight: 800; letter-spacing: .14em; text-align: center; color: #ededed; background: #0a0a0a; border: 2px solid #262626; border-radius: 14px; font-variant-numeric: tabular-nums; }
+  #code:focus { outline: none; border-color: #14b8a6; }
+  #enter button { font: inherit; width: 100%; padding: 14px; font-size: 18px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #0b8f80, #19c2ab 60%, #5eead4); border: none; border-radius: 14px; cursor: pointer; }
   #enter button:disabled { opacity: .4; }
 
-  #recode { margin-top: 18px; padding: 8px 18px; color: #8990a8; background: none; }
+  #recode { margin-top: 18px; padding: 8px 18px; color: #8a8a8a; background: none; }
   #wait { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; line-height: 1.7; background: rgba(11,13,20,.94); color: var(--dim); }
 </style>
 </head>

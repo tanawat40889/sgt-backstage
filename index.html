@@ -10,6 +10,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script>
+  // before the first paint, so a light theme never flashes dark on load
+  try { if (localStorage.getItem('sgtbs-theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch {}
+</script>
 </head>
 <body>
 
@@ -45,7 +49,7 @@
   </section>
 
   <section id="recentBox">
-    <h2>Folder ล่าสุด</h2>
+    <div class="recentHead"><h2>Folder ล่าสุด</h2><button id="themeBtn" class="themeBtn" title="เปลี่ยนธีมสี"></button></div>
     <ul id="recentList"></ul>
     <p id="recentEmpty" class="dim">ยังไม่มี folder ที่เคยเปิดในเครื่องนี้<br>folder ที่เปิดแล้วจะมาอยู่ตรงนี้ กดครั้งเดียวเพื่อเปิดต่อ</p>
     <p class="dim foot">ใช้ Chrome หรือ Edge บนคอมพิวเตอร์ · ไฟล์ทั้งหมดอยู่ในเครื่องของคุณ ไม่ถูกส่งขึ้นเว็บ</p>

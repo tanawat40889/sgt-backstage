@@ -10,38 +10,39 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { --ok: #34d399; --warn: #ffd166; --soon: #ff4d6d; --dim: #8990a8; --c: var(--ok); }
-  html, body { height: 100%; margin: 0; background: #0b0d14; color: #eceef6; overflow: hidden; }
+  :root { --ok: #4ade80; --warn: #ffd166; --soon: #ff4d6d; --dim: #8a8a8a; --c: var(--ok); }
+  html, body { height: 100%; margin: 0; background: #000000; color: #ededed; overflow: hidden; }
   body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.5vh; padding: 3vh 4vw; box-sizing: border-box; text-align: center; font-family: "Noto Sans Thai", -apple-system, "Segoe UI", "Sarabun", Arial, sans-serif; }
   [hidden] { display: none !important; }
+  body { background: radial-gradient(70% 60% at 50% 30%, rgba(20,184,166,.06), transparent 70%), #000000; }
   body.warn { --c: var(--warn); }
   body.soon { --c: var(--soon); }
-  body.idle { --c: #333a55; }
+  body.idle { --c: #262626; }
 
-  #team { font-size: min(4vw, 6vh); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #7c6cff; }
+  #team { font-size: min(4vw, 6vh); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #14b8a6; }
   #time { font-size: min(30vw, 46vh); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--c); }
   /* the cue this team does next: the line they act on, so it is the second-biggest thing */
   #next { font-size: min(6.5vw, 11vh); font-weight: 700; line-height: 1.2; max-width: 100%; overflow-wrap: anywhere; }
   .sub { font-size: min(3.2vw, 5vh); color: var(--dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sub b { color: #eceef6; font-weight: 600; }
-  #bar { width: 80vw; height: 1.2vh; min-height: 4px; border-radius: 99px; background: #1a1e2d; overflow: hidden; color: var(--c); }
+  .sub b { color: #ededed; font-weight: 600; }
+  #bar { width: 80vw; height: 1.2vh; min-height: 4px; border-radius: 99px; background: #111111; overflow: hidden; color: var(--c); }
   #fill { height: 100%; width: 0; background: currentColor; }
   body.idle #bar { visibility: hidden; }
 
-  #back { position: fixed; left: 2.5vw; top: 2.5vh; font-size: max(14px, min(3vw, 3.5vh)); font-weight: 600; color: var(--dim); text-decoration: none; padding: .4em .9em; border-radius: 99px; background: #1a1e2d; border: 1px solid #333a55; }
-  #back:hover { color: #eceef6; }
+  #back { position: fixed; left: 2.5vw; top: 2.5vh; font-size: max(14px, min(3vw, 3.5vh)); font-weight: 600; color: var(--dim); text-decoration: none; padding: .4em .9em; border-radius: 99px; background: #111111; border: 1px solid #262626; }
+  #back:hover { color: #ededed; }
 
 
   /* asked for when the page was opened without a code in its address */
   #enter { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(320px, 100%); margin: 0 auto; }
-  #enter p { margin: 0; color: #8990a8; line-height: 1.6; }
-  #code { font: inherit; width: 100%; padding: 14px; font-size: 34px; font-weight: 800; letter-spacing: .14em; text-align: center; color: #eceef6; background: #131622; border: 2px solid #333a55; border-radius: 14px; font-variant-numeric: tabular-nums; }
-  #code:focus { outline: none; border-color: #7c6cff; }
-  #enter button { font: inherit; width: 100%; padding: 14px; font-size: 18px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #7c6cff, #4cc2ff); border: none; border-radius: 14px; cursor: pointer; }
+  #enter p { margin: 0; color: #8a8a8a; line-height: 1.6; }
+  #code { font: inherit; width: 100%; padding: 14px; font-size: 34px; font-weight: 800; letter-spacing: .14em; text-align: center; color: #ededed; background: #0a0a0a; border: 2px solid #262626; border-radius: 14px; font-variant-numeric: tabular-nums; }
+  #code:focus { outline: none; border-color: #14b8a6; }
+  #enter button { font: inherit; width: 100%; padding: 14px; font-size: 18px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #0b8f80, #19c2ab 60%, #5eead4); border: none; border-radius: 14px; cursor: pointer; }
   #enter button:disabled { opacity: .4; }
 
   #teams { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-  #teams a { font-size: min(3.5vw, 4vh); font-weight: 600; color: #eceef6; text-decoration: none; padding: .4em 1em; border-radius: 99px; background: #1a1e2d; border: 1px solid #333a55; }
+  #teams a { font-size: min(3.5vw, 4vh); font-weight: 600; color: #ededed; text-decoration: none; padding: .4em 1em; border-radius: 99px; background: #111111; border: 1px solid #262626; }
 </style>
 </head>
 <body class="idle">

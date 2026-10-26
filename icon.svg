@@ -2,16 +2,16 @@
   <!-- Backstage: a crew headset in the wings, between the curtains, under the working light. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1d2446"/>
-      <stop offset="1" stop-color="#090b12"/>
+      <stop offset="0" stop-color="#141414"/>
+      <stop offset="1" stop-color="#000000"/>
     </linearGradient>
     <linearGradient id="left" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#9a8cff"/>
-      <stop offset="1" stop-color="#5644d8"/>
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#0b7a6e"/>
     </linearGradient>
     <linearGradient id="right" x1="1" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#6fd3ff"/>
-      <stop offset="1" stop-color="#2b78d8"/>
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#0d9488"/>
     </linearGradient>
     <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#fff" stop-opacity=".5"/>

@@ -2424,6 +2424,23 @@ function placeMenu(r, kind = '') {
   m.style.top = `${Math.max(8, r.top - h - 6 >= 8 ? r.top - h - 6 : Math.min(r.bottom + 6, innerHeight - h - 8))}px`;
 }
 
+/* ---------- theme (dark / light), remembered per browser ---------- */
+
+const THEME_KEY = 'sgtbs-theme';
+const isLight = () => document.documentElement.dataset.theme === 'light';
+const themeLabel = () => (isLight() ? 'ธีมมืด' : 'ธีมสว่าง');
+
+function setTheme(light) {
+  if (light) document.documentElement.dataset.theme = 'light';
+  else delete document.documentElement.dataset.theme;
+  try {
+    localStorage.setItem(THEME_KEY, light ? 'light' : 'dark');
+  } catch { /* private window: the choice just won't be remembered */ }
+  $('themeBtn').textContent = `◐ ${themeLabel()}`;
+}
+
+const toggleTheme = () => setTheme(!isLight());
+
 /* ---------- init ---------- */
 
 // wrap handlers so failures surface in the UI instead of the console only
@@ -2439,6 +2456,8 @@ function guard(fn) {
 }
 
 $('newBtn').onclick = openNewDialog;
+$('themeBtn').onclick = toggleTheme;
+$('themeBtn').textContent = `◐ ${themeLabel()}`;
 $('pickBtn').onclick = guard(openExisting);
 $('newForm').onsubmit = e => {
   e.preventDefault();
@@ -2454,6 +2473,7 @@ $('menuBtn').onclick = () => {
   m.replaceChildren(
     menuItem('+', 'สร้างโปรเจคใหม่…', close(openNewDialog)),
     menuItem('▤', 'เปิดโปรเจคอื่น…', close(openExisting)),
+    menuItem('◐', themeLabel(), close(toggleTheme)),
     menuItem('⌂', 'หน้าแรก', close(goHome)),
   );
   placeMenu($('menuBtn').getBoundingClientRect());
