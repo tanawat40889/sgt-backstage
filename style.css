@@ -750,3 +750,17 @@ button.primary, #goBtn { box-shadow: 0 0 0 1px rgba(94,234,212,.25) inset, 0 8px
 }
 :root[data-theme=light] #askDlg::backdrop, :root[data-theme=light] #newDlg::backdrop, :root[data-theme=light] #cueDlg::backdrop { background: rgba(0,0,0,.35); }
 :root[data-theme=light] #toast { background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,.15); }
+
+/* ---------- blackout, scene notes ---------- */
+#blackBtn { height: 32px; flex-shrink: 0; padding: 0; font-size: 12px; font-weight: 700; border-radius: 12px; }
+#blackBtn.on { background: var(--live); border-color: transparent; color: #fff; box-shadow: 0 0 18px rgba(255,77,109,.55); animation: blackPulse 1.2s ease-in-out infinite alternate; }
+@keyframes blackPulse { to { box-shadow: 0 0 4px rgba(255,77,109,.25); } }
+/* the operator still sees what is live, dimmed, while the audience sees black */
+#liveStage .lyr { transition: opacity .5s; }
+#liveStage.black .lyr { opacity: .2 !important; }
+#liveStage.black::after { content: 'จอดำ'; position: absolute; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; letter-spacing: 0; color: var(--live); pointer-events: none; }
+.stageLabel .note { min-width: 0; max-width: 60%; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); }
+.stageLabel .note:empty { display: none; }
+.stageLabel .note::before { content: '✎ '; color: var(--text-dim); }
+#shotNote { width: 220px; }
+#layers .shot.noted .thumb::after { content: '✎'; position: absolute; left: 4px; bottom: 2px; font-size: 10px; color: var(--text-dim); }

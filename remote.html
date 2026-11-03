@@ -117,6 +117,16 @@
   #enter button { font: inherit; width: 100%; padding: 14px; font-size: 18px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #0b8f80, #19c2ab 60%, #5eead4); border: none; border-radius: 14px; cursor: pointer; }
   #enter button:disabled { opacity: .4; }
 
+  /* notes the team wrote on the scenes now on Live / Preview */
+  #notes { flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; padding: 8px 16px; background: rgba(20,184,166,.07); border-bottom: 1px solid var(--border); font-size: 14px; }
+  #notes div { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+  #notes b { flex-shrink: 0; font-size: 10px; letter-spacing: .1em; padding: 2px 6px; border-radius: 4px; }
+  #notes .live b { color: #fff; background: var(--live); }
+  #notes .pv b { color: #06281c; background: var(--pv); }
+  #notes span { min-width: 0; overflow-wrap: anywhere; }
+  #black { flex: 0 0 76px; height: 64px; font-weight: 700; }
+  #black.on { background: var(--live); border-color: transparent; color: #fff; box-shadow: 0 0 18px rgba(255,77,109,.55); }
+
   #recode { margin-top: 18px; padding: 8px 18px; color: #8a8a8a; background: none; }
   #wait { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; line-height: 1.7; background: rgba(11,13,20,.94); color: var(--dim); }
 </style>
@@ -127,6 +137,10 @@
   <span id="cd"></span>
   <i id="dot" title="สถานะการเชื่อมต่อ"></i>
 </header>
+<div id="notes" hidden>
+  <div class="live" hidden><b>LIVE</b><span></span></div>
+  <div class="pv" hidden><b>PREVIEW</b><span></span></div>
+</div>
 
 <main>
   <div id="legend"><span><i style="background:var(--pv)"></i>Preview</span><span><i style="background:var(--live)"></i>Live</span></div>
@@ -149,6 +163,7 @@
     <button id="next">▶</button>
   </div>
   <div id="take">
+    <button id="black" title="จอ Output เป็นสีดำและค่อยๆ ปิดเสียง">จอดำ</button>
     <div id="seg">
       <button data-t="cut">Cut</button>
       <button data-t="smooth">Fade</button>
@@ -281,6 +296,16 @@ function render(st) {
   }));
   document.querySelectorAll('.row').forEach((r, i) => { r.scrollLeft = scroll[i] ?? 0; });
 
+  $('black').classList.toggle('on', !!st.black);
+  $('black').textContent = st.black ? 'กลับมา' : 'จอดำ';
+  const notes = st.notes ?? {};
+  for (const k of ['live', 'pv']) {
+    const row = document.querySelector(`#notes .${k}`);
+    row.hidden = !notes[k];
+    row.querySelector('span').textContent = notes[k] ?? '';
+  }
+  $('notes').hidden = !notes.live && !notes.pv;
+
   for (const b of document.querySelectorAll('#seg button')) b.classList.toggle('active', b.dataset.t === st.trans);
   showMarks(st.marks ?? []);
   showFiles(st.files ?? []);
@@ -392,6 +417,7 @@ $('tpSeek').onchange = () => {
 /* ---------- controls ---------- */
 
 $('go').onclick = () => send('go');
+$('black').onclick = () => send('black');
 $('prev').onclick = () => send('page', { dir: -1 });
 $('next').onclick = () => send('page', { dir: 1 });
 for (const b of document.querySelectorAll('#seg button')) b.onclick = () => send('trans', { t: b.dataset.t });

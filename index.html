@@ -73,7 +73,7 @@
 
   <section id="stages">
     <div class="stageWrap">
-      <div class="stageLabel">Preview</div>
+      <div class="stageLabel">Preview<span id="pvNote" class="note"></span></div>
       <div class="stageBox"><div id="pvStage" class="stage"></div></div>
     </div>
     <div id="takeCol">
@@ -82,9 +82,10 @@
         <button class="trans active" data-t="cut">Cut</button>
         <button class="trans" data-t="smooth">Fade</button>
       </div>
+      <button id="blackBtn" title="จอ Output เป็นสีดำและค่อยๆ ปิดเสียง กดอีกครั้งเพื่อกลับมา (B)">จอดำ</button>
     </div>
     <div class="stageWrap">
-      <div class="stageLabel live"><i></i>Live<span id="cd"></span></div>
+      <div class="stageLabel live"><i></i>Live<span id="cd"></span><span id="liveNote" class="note"></span></div>
       <div class="stageBox"><div id="liveStage" class="stage"></div></div>
     </div>
     <div id="meter" title="ระดับเสียง Live (dB)">
@@ -119,6 +120,7 @@
       <div class="irow">
         <label class="grp"><span class="cap">ชื่อ scene</span><input id="shotName" type="text" autocomplete="off"></label>
         <label class="grp" title="ตัวอักษรที่แสดงบนปุ่ม scene เว้นว่างไว้เพื่อให้ย่อจากชื่ออัตโนมัติ"><span class="cap">ตัวย่อ</span><input id="shotAbbr" type="text" maxlength="4" autocomplete="off"></label>
+        <label class="grp" title="โน้ตสำหรับทีมงาน แสดงข้างป้าย Preview / Live และบน Remote ไม่ขึ้นจอ Output"><span class="cap">โน้ต</span><input id="shotNote" type="text" autocomplete="off" placeholder="เช่น รอพิธีกรพูดจบ"></label>
         <div class="grp">
           <span class="cap">Sources</span>
           <button id="srcBtn" title="เลือก source ที่จะตั้งค่า เรียงลำดับ หรือลบ"></button>

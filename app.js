@@ -266,6 +266,7 @@ async function save() {
   clearTimeout(saveTimer);
   saveTimer = null;
   cur.data.updatedAt = new Date().toISOString();
+  track();
   await writeProject(cur.fh, cur.data);
 }
 
@@ -276,8 +277,73 @@ function saveSoon() {
   saveTimer = setTimeout(guard(save), 400);
 }
 
+/* ---------- undo / redo ---------- */
+
+// Every save is a step. A snapshot is the whole project as JSON; quick edits (typing,
+// dragging) are already grouped by saveSoon(), so one step = one pause in editing.
+const HIST_MAX = 100;
+const hist = { undo: [], redo: [], base: '', key: '' };
+
+// what counts as an edit: turning a PDF page is running the show, not editing it
+const histKey = data => JSON.stringify(data, (k, v) => (k === 'updatedAt' || k === 'page' ? undefined : v));
+
+function resetHistory() {
+  Object.assign(hist, { undo: [], redo: [], base: JSON.stringify(cur.data), key: histKey(cur.data) });
+}
+
+function track() {
+  const key = histKey(cur.data);
+  if (key !== hist.key) {
+    hist.undo.push(hist.base);
+    if (hist.undo.length > HIST_MAX) hist.undo.shift();
+    hist.redo = [];
+    hist.key = key;
+  }
+  hist.base = JSON.stringify(cur.data);
+}
+
+const undo = () => stepHistory('undo', 'redo', 'ย้อนกลับแล้ว', 'ไม่มีอะไรให้ย้อนกลับ');
+const redo = () => stepHistory('redo', 'undo', 'ทำซ้ำแล้ว', 'ไม่มีอะไรให้ทำซ้ำ');
+
+async function stepHistory(fromKey, toKey, done, none) {
+  if (!cur) return;
+  // an edit still waiting to be saved becomes its own step first (and clears redo)
+  if (saveTimer) await save();
+  const from = hist[fromKey];
+  const to = hist[toKey];
+  if (!from.length) return toast(none);
+  to.push(hist.base);
+  const old = cur.data;
+  const data = JSON.parse(from.pop());
+  const oldSrcs = new Map(old.layers.flatMap(l => l.shots).flatMap(sh => sh.sources).map(x => [x.id, x]));
+  for (const x of data.layers.flatMap(l => l.shots).flatMap(sh => sh.sources)) {
+    // PDFs stay on the page they are on now
+    const o = oldSrcs.get(x.id);
+    if (o?.page) x.page = o.page;
+    else if (o) delete x.page;
+  }
+  const oldShots = new Map(old.layers.flatMap(l => l.shots).map(sh => [sh.id, histKey(sh)]));
+  const changed = new Set(data.layers.flatMap(l => l.shots).filter(sh => oldShots.get(sh.id) !== histKey(sh)).map(sh => sh.id));
+  cur.data = data;
+  hist.base = JSON.stringify(data);
+  hist.key = histKey(data);
+  await Promise.all(allShots().flatMap(sh => sh.sources).filter(x => x.src).map(x => loadUrl(x.src)));
+  // a scene that no longer exists leaves its layer empty
+  for (const ids of [sel.pv, sel.live]) ids.forEach((id, i) => { if (id && !findShot(id)) ids[i] = null; });
+  if (edit && !findShot(edit.shotId)) edit = null;
+  // only scenes that changed are rebuilt, so the rest keep playing untouched
+  rerender(sh => !sh || changed.has(sh.id));
+  gcStreams();
+  tpKey = '';
+  await save();
+  renderLayers();
+  renderInsp();
+  toast(done);
+}
+
 async function closeProject() {
   if (cur && saveTimer) await save();
+  setBlack(false);
   // also blanks the output window, which stays open across projects
   for (const st of Object.values(stages)) {
     dropAudio(st.el);
@@ -637,6 +703,7 @@ async function renderProject() {
   sel = { pv: data.layers.map(() => null), live: data.layers.map(() => null) };
   stages = { pv: makeStage($('pvStage')), live: makeStage($('liveStage')) };
   attachOutput();
+  resetHistory();
   renderLayers();
   renderInsp();
 }
@@ -899,6 +966,32 @@ function go() {
   mark();
 }
 
+/* ---------- blackout: output to black, sound faded out ---------- */
+
+// what is live keeps running underneath, so coming back is instant and in step
+let black = false;
+
+function setBlack(on) {
+  black = on;
+  const ms = SMOOTH_MS;
+  const out = stages.out?.el;
+  if (out) {
+    out.style.transition = `opacity ${ms}ms`;
+    out.style.opacity = on ? 0 : 1;
+  }
+  $('liveStage').classList.toggle('black', on);
+  $('blackBtn').classList.toggle('on', on);
+  $('blackBtn').textContent = on ? 'กลับมา' : 'จอดำ';
+  if (master) ramp(master, null, on ? 0 : 1, AUDIO_FADE_MS / 1000);
+}
+
+function toggleBlack() {
+  if (!cur) return;
+  actx?.resume();
+  setBlack(!black);
+  sendState();
+}
+
 /* ---------- live audio: routing + level meter ---------- */
 
 const DB_FLOOR = -60;
@@ -914,6 +1007,7 @@ function audioGraph() {
     // explicit stereo so a mono source reads on both bars
     master = new GainNode(actx, { channelCount: 2, channelCountMode: 'explicit' });
     const split = new ChannelSplitterNode(actx, { numberOfOutputs: 2 });
+    if (black) master.gain.value = 0;
     master.connect(actx.destination);
     master.connect(split);
     analysers = [0, 1].map(ch => {
@@ -1113,6 +1207,7 @@ function attachOutput() {
   stages.out = makeStage(d.getElementById('stage'));
   stages.out.el.replaceChildren();
   setStage(stages.out, sel.live, 0, 'out');
+  setBlack(black);
   for (const a of stages.live.el.querySelectorAll('.src video[src]')) {
     const b = stages.out.el.querySelector(`[data-src="${a.closest('.src').dataset.src}"] video`);
     if (b) b.currentTime = a.currentTime;
@@ -1173,7 +1268,8 @@ function shotTile(i, shot) {
   if (shot) {
     // no preview picture: a short label made from the name, tinted by what the scene is
     t.dataset.kind = tileKind(shot);
-    t.title = shot.name;
+    t.title = shot.note ? `${shot.name}\n✎ ${shot.note}` : shot.name;
+    t.classList.toggle('noted', !!shot.note);
     th.append(el('span', 'abbr', tileLabel(shot)));
     if (shot.sources.length > 1) th.append(el('span', 'count', shot.sources.length));
   }
@@ -1221,6 +1317,18 @@ function mark() {
     t.classList.toggle('pv', sel.pv[t.dataset.layer] === id);
     t.classList.toggle('live', sel.live[t.dataset.layer] === id);
     t.classList.toggle('editing', !!id && edit?.shotId === id);
+  }
+  showNotes();
+}
+
+// notes of the scenes on a stage, top layer first
+const notesOf = ids => ids.map(id => id && findShot(id)?.note).filter(Boolean).join(' · ');
+
+function showNotes() {
+  for (const [k, ids] of [['pvNote', sel.pv], ['liveNote', sel.live]]) {
+    const n = notesOf(ids);
+    $(k).textContent = n;
+    $(k).title = n;
   }
 }
 
@@ -1421,6 +1529,8 @@ function remoteState() {
     pv: sel.pv,
     live: sel.live,
     layers: cur.data.layers.map(l => l.shots.map(sh => ({ id: sh.id, label: tileLabel(sh), name: sh.name, kind: tileKind(sh) }))),
+    black,
+    notes: { pv: notesOf(sel.pv), live: notesOf(sel.live) },
     pdf: pdf && { name: pdf.name, page: pdf.page ?? 1 },
     // bookmarks of the file the seek bar is on (its position travels with the countdown tick)
     marks: (tp?.s.bookmarks ?? []).map(b => ({ t: b.t, name: b.name })),
@@ -1460,6 +1570,8 @@ function onRemote(m) {
     if (l && (m.id === null || l.shots.some(sh => sh.id === m.id))) selectShot(m.layer, m.id);
   } else if (m.cmd === 'go') {
     go();
+  } else if (m.cmd === 'black') {
+    toggleBlack();
   } else if (m.cmd === 'trans') {
     setTrans(m.t);
   } else if (m.cmd === 'page') {
@@ -2045,6 +2157,7 @@ function renderInspBody() {
 
   if (document.activeElement !== $('shotName')) $('shotName').value = shot.name;
   if (document.activeElement !== $('shotAbbr')) $('shotAbbr').value = shot.abbr ?? '';
+  if (document.activeElement !== $('shotNote')) $('shotNote').value = shot.note ?? '';
   $('shotAbbr').placeholder = abbr(shot.name);
   if (!shot.sources.some(s => s.id === edit.srcId)) edit.srcId = shot.sources[0]?.id ?? null;
 
@@ -2464,6 +2577,8 @@ $('newForm').onsubmit = e => {
   createProject();
 };
 $('newCancel').onclick = () => $('newDlg').close();
+const IS_MAC = /Mac|iP(hone|ad)/.test(navigator.platform);
+const MOD = IS_MAC ? '⌘' : 'Ctrl+';
 $('menuBtn').onclick = () => {
   const m = $('addMenu');
   const close = fn => async () => {
@@ -2473,6 +2588,8 @@ $('menuBtn').onclick = () => {
   m.replaceChildren(
     menuItem('+', 'สร้างโปรเจคใหม่…', close(openNewDialog)),
     menuItem('▤', 'เปิดโปรเจคอื่น…', close(openExisting)),
+    menuItem('↶', `ย้อนกลับ (${MOD}Z)`, close(undo)),
+    menuItem('↷', `ทำซ้ำ (${MOD}${IS_MAC ? '⇧Z' : 'Y'})`, close(redo)),
     menuItem('◐', themeLabel(), close(toggleTheme)),
     menuItem('⌂', 'หน้าแรก', close(goHome)),
   );
@@ -2496,6 +2613,11 @@ $('plCross').onchange = guard(async () => {
   await shotChanged(shot);
 });
 $('goBtn').onclick = guard(go);
+$('blackBtn').onclick = () => {
+  toggleBlack();
+  // a focused button would also be pressed by the Space meant for GO
+  $('blackBtn').blur();
+};
 $('unmute').onclick = unmute;
 $('outBtn').onclick = guard(openOutput);
 $('cdBtn').onclick = guard(toggleCdPanel);
@@ -2668,6 +2790,23 @@ $('shotAbbr').oninput = () => {
   if (t) t.textContent = tileLabel(shot);
   saveSoon();
 };
+$('shotNote').oninput = () => {
+  const shot = editShot();
+  if (!shot) return;
+  const v = $('shotNote').value.trim();
+  if (v) shot.note = v;
+  else delete shot.note;
+  const t = document.querySelector(`#layers .shot[data-id="${shot.id}"]`);
+  if (t) {
+    t.title = shot.note ? `${shot.name}\n✎ ${shot.note}` : shot.name;
+    t.classList.toggle('noted', !!shot.note);
+  }
+  showNotes();
+  saveSoon();
+};
+$('shotNote').onkeydown = e => {
+  if (e.key === 'Enter' || e.key === 'Escape') $('shotNote').blur();
+};
 $('shotAbbr').onkeydown = e => {
   if (e.key === 'Enter' || e.key === 'Escape') $('shotAbbr').blur();
 };
@@ -2702,9 +2841,19 @@ document.addEventListener('keydown', e => {
   if (document.querySelector('dialog[open]')) return;
   if (capture) return guard(onCaptureKey)(e);
   if (e.target.closest('input, textarea, select, [contenteditable]')) return;
+  // Ctrl+Z / Ctrl+Y undo unless the user has given that key to a scene
+  const z = e.code === 'KeyZ' ? (e.shiftKey ? redo : undo) : e.code === 'KeyY' ? redo : null;
   if (e.ctrlKey && !e.metaKey && !e.altKey) {
     if (runHotkey(e.code)) e.preventDefault();
+    else if (z) {
+      e.preventDefault();
+      guard(z)();
+    }
     return;
+  }
+  if (e.metaKey && !e.ctrlKey && !e.altKey && z) {
+    e.preventDefault();
+    return guard(z)();
   }
   // arrows, and the PageUp / PageDown that presentation clickers send, turn the PDF
   const turn = { ArrowRight: 1, PageDown: 1, ArrowLeft: -1, PageUp: -1 }[e.code];
@@ -2713,6 +2862,10 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.code === 'KeyB') {
+    e.preventDefault();
+    return toggleBlack();
+  }
   if (e.code !== 'Space' && e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
   e.preventDefault();
   // otherwise the key would also re-click whichever button has focus
