@@ -531,12 +531,21 @@ async function pickScreen(s) {
 /* ---------- open flow ---------- */
 
 // the folder picker; null when the user backs out of it
+// the browser allows one picker at a time; a second click while one is open would fail
+let picking = false;
+
 async function pickDir(id) {
+  if (picking) return null;
+  picking = true;
   try {
     return await showDirectoryPicker({ id, mode: 'readwrite' });
   } catch (e) {
     if (e.name === 'AbortError') return null;
+    // one is still open somewhere: behind this window, or in another tab of the app
+    if (/already active/i.test(e.message)) throw new Error('มีหน้าต่างเลือก folder เปิดค้างอยู่แล้ว ปิดหน้าต่างนั้นก่อน (อาจซ่อนอยู่หลังหน้านี้ หรืออยู่ในแท็บอื่นที่เปิดแอปนี้) แล้วกดใหม่');
     throw e;
+  } finally {
+    picking = false;
   }
 }
 
@@ -1189,6 +1198,7 @@ function outputReady(w) {
   outWin = w;
   $('outBtn').classList.add('on');
   $('outBtn').textContent = 'ปิดจอ Output';
+  $('fullBtn').hidden = false;
   attachOutput();
 }
 
@@ -1197,6 +1207,19 @@ function outputClosed() {
   delete stages.out;
   $('outBtn').classList.remove('on');
   $('outBtn').textContent = 'เปิดจอ Output';
+  $('fullBtn').hidden = true;
+}
+
+// Browsers only let a window go fullscreen from a click inside that window. Some let
+// the click on this page count; otherwise bring the Output window forward with its own button.
+async function outputFull() {
+  if (!outWin || outWin.closed) return;
+  try {
+    await outWin.document.documentElement.requestFullscreen();
+  } catch {
+    outWin.focus();
+    toast('กดปุ่ม "⛶ เต็มจอ" บนจอ Output (หรือดับเบิลคลิกที่จอนั้น)');
+  }
 }
 
 // mirror the current live stage into the output window
@@ -2620,6 +2643,10 @@ $('blackBtn').onclick = () => {
 };
 $('unmute').onclick = unmute;
 $('outBtn').onclick = guard(openOutput);
+$('fullBtn').onclick = () => {
+  outputFull();
+  $('fullBtn').blur();
+};
 $('cdBtn').onclick = guard(toggleCdPanel);
 $('roomBtn').onclick = guard(toggleCdPanel);
 showRoom();

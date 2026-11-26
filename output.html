@@ -17,13 +17,14 @@
   .src { position: absolute; overflow: hidden; display: flex; align-items: center; justify-content: center; container-type: size; }
   .view { position: relative; flex: none; overflow: hidden; width: min(100cqw, 100cqh * var(--a, 1.7778)); aspect-ratio: var(--a, 1.7778); }
   .view > * { position: absolute; display: block; object-fit: fill; }
-  #hint { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100; color: #ddd; background: rgba(16,16,16,.9); padding: 8px 16px; border-radius: 8px; font-size: 14px; transition: opacity .4s; }
-  body.idle #hint, :fullscreen #hint { opacity: 0; }
+  #hint { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100; display: flex; align-items: center; gap: 12px; color: #ddd; background: rgba(16,16,16,.9); padding: 8px 8px 8px 16px; border-radius: 12px; font-size: 14px; transition: opacity .4s; white-space: nowrap; }
+  #full { font: inherit; font-weight: 700; color: #fff; background: linear-gradient(135deg, #0b8f80, #19c2ab 60%, #5eead4); border: none; border-radius: 9px; padding: 8px 16px; cursor: pointer; }
+  body.idle #hint, :fullscreen #hint { opacity: 0; pointer-events: none; }
 </style>
 </head>
 <body>
 <div id="stage"></div>
-<div id="hint">ดับเบิลคลิก หรือกด F เพื่อเต็มจอ</div>
+<div id="hint"><span id="hintText">หรือดับเบิลคลิก / กด F</span><button id="full">⛶ เต็มจอ</button></div>
 
 <script>
 // the control window (opener) renders into #stage directly
@@ -35,6 +36,10 @@ function toggleFull() {
 }
 
 document.addEventListener('dblclick', toggleFull);
+document.getElementById('full').onclick = e => {
+  e.stopPropagation();
+  toggleFull();
+};
 document.addEventListener('keydown', e => {
   if (e.repeat) return;
   if (e.code === 'KeyF') toggleFull();
@@ -56,7 +61,7 @@ document.addEventListener('mousemove', () => {
 });
 
 if (ctl?.outputReady) ctl.outputReady(window);
-else document.getElementById('hint').textContent = 'เปิดหน้านี้จากปุ่ม Output ในหน้า control';
+else document.getElementById('hintText').textContent = 'เปิดหน้านี้จากปุ่ม Output ในหน้า control';
 
 addEventListener('pagehide', () => ctl?.outputClosed?.());
 </script>
