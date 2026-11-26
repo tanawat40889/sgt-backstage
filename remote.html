@@ -124,7 +124,9 @@
   #notes .live b { color: #fff; background: var(--live); }
   #notes .pv b { color: #06281c; background: var(--pv); }
   #notes span { min-width: 0; overflow-wrap: anywhere; }
-  #black { flex: 0 0 76px; height: 64px; font-weight: 700; }
+  #extra { display: flex; gap: 10px; }
+  #extra button { flex: 1; height: 48px; font-weight: 700; }
+  #duck.on { background: #f59e0b; border-color: transparent; color: #1a1200; box-shadow: 0 0 16px rgba(245,158,11,.5); }
   #black.on { background: var(--live); border-color: transparent; color: #fff; box-shadow: 0 0 18px rgba(255,77,109,.55); }
 
   #recode { margin-top: 18px; padding: 8px 18px; color: #8a8a8a; background: none; }
@@ -162,8 +164,11 @@
     <span id="page"></span>
     <button id="next">▶</button>
   </div>
-  <div id="take">
+  <div id="extra">
+    <button id="duck" title="ลดเสียงเพลง / วิดีโอลงครึ่งหนึ่ง">ลดเสียง</button>
     <button id="black" title="จอ Output เป็นสีดำและค่อยๆ ปิดเสียง">จอดำ</button>
+  </div>
+  <div id="take">
     <div id="seg">
       <button data-t="cut">Cut</button>
       <button data-t="smooth">Fade</button>
@@ -296,6 +301,8 @@ function render(st) {
   }));
   document.querySelectorAll('.row').forEach((r, i) => { r.scrollLeft = scroll[i] ?? 0; });
 
+  $('duck').classList.toggle('on', !!st.duck);
+  $('duck').textContent = st.duck ? 'เสียงปกติ' : 'ลดเสียง';
   $('black').classList.toggle('on', !!st.black);
   $('black').textContent = st.black ? 'กลับมา' : 'จอดำ';
   const notes = st.notes ?? {};
@@ -418,6 +425,7 @@ $('tpSeek').onchange = () => {
 
 $('go').onclick = () => send('go');
 $('black').onclick = () => send('black');
+$('duck').onclick = () => send('duck');
 $('prev').onclick = () => send('page', { dir: -1 });
 $('next').onclick = () => send('page', { dir: 1 });
 for (const b of document.querySelectorAll('#seg button')) b.onclick = () => send('trans', { t: b.dataset.t });

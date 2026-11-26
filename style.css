@@ -752,6 +752,8 @@ button.primary, #goBtn { box-shadow: 0 0 0 1px rgba(94,234,212,.25) inset, 0 8px
 :root[data-theme=light] #toast { background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,.15); }
 
 /* ---------- blackout, scene notes ---------- */
+#duckBtn { height: 32px; flex-shrink: 0; padding: 0; font-size: 12px; font-weight: 700; border-radius: 12px; }
+#duckBtn.on { background: #f59e0b; border-color: transparent; color: #1a1200; box-shadow: 0 0 16px rgba(245,158,11,.5); }
 #blackBtn { height: 32px; flex-shrink: 0; padding: 0; font-size: 12px; font-weight: 700; border-radius: 12px; }
 #blackBtn.on { background: var(--live); border-color: transparent; color: #fff; box-shadow: 0 0 18px rgba(255,77,109,.55); animation: blackPulse 1.2s ease-in-out infinite alternate; }
 @keyframes blackPulse { to { box-shadow: 0 0 4px rgba(255,77,109,.25); } }

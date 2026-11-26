@@ -344,6 +344,7 @@ async function stepHistory(fromKey, toKey, done, none) {
 async function closeProject() {
   if (cur && saveTimer) await save();
   setBlack(false);
+  setDuck(false);
   // also blanks the output window, which stays open across projects
   for (const st of Object.values(stages)) {
     dropAudio(st.el);
@@ -994,6 +995,27 @@ function setBlack(on) {
   if (master) ramp(master, null, on ? 0 : 1, AUDIO_FADE_MS / 1000);
 }
 
+/* ---------- lower the music (someone is about to speak) ---------- */
+
+const DUCK = 0.5;
+let duck = false;
+
+function setDuck(on) {
+  duck = on;
+  $('duckBtn').classList.toggle('on', on);
+  $('duckBtn').textContent = on ? 'เสียงปกติ' : 'ลดเสียง';
+  for (const m of stages.live?.el.querySelectorAll('video, audio') ?? []) {
+    if (m._duck) ramp(m._duck, null, on ? DUCK : 1, AUDIO_FADE_MS / 1000);
+  }
+}
+
+function toggleDuck() {
+  if (!cur) return;
+  actx?.resume();
+  setDuck(!duck);
+  sendState();
+}
+
 function toggleBlack() {
   if (!cur) return;
   actx?.resume();
@@ -1041,7 +1063,9 @@ function meterElement(m, bus) {
   const ctx = audioGraph();
   m._an = ctx.createMediaElementSource(m);
   m._gain = new GainNode(ctx);
-  m._an.connect(m._gain).connect(bus);
+  // files only: a microphone keeps its level when the music is lowered
+  m._duck = new GainNode(ctx, { gain: duck ? DUCK : 1 });
+  m._an.connect(m._gain).connect(m._duck).connect(bus);
 }
 
 function meterStream(m, st, bus) {
@@ -1140,6 +1164,7 @@ function dropAudio(root) {
     m.pause();
     m._an?.disconnect();
     m._gain?.disconnect();
+    m._duck?.disconnect();
   }
   for (const n of root.matches('.lyr') ? [root] : root.querySelectorAll('.lyr')) n._bus?.disconnect();
 }
@@ -1190,7 +1215,8 @@ async function openOutput() {
       if (e.name !== 'NotAllowedError') throw e;
     }
   }
-  if (!window.open('output.html', 'sgtobs-output', feat)) throw new Error('Browser บล็อก popup — อนุญาต popup สำหรับหน้านี้ก่อน');
+  // a fresh address each time, so the browser never shows an old copy of the page
+  if (!window.open(`output.html?t=${Date.now()}`, 'sgtobs-output', feat)) throw new Error('Browser บล็อก popup — อนุญาต popup สำหรับหน้านี้ก่อน');
 }
 
 // called by output.html once it has loaded
@@ -1553,6 +1579,7 @@ function remoteState() {
     live: sel.live,
     layers: cur.data.layers.map(l => l.shots.map(sh => ({ id: sh.id, label: tileLabel(sh), name: sh.name, kind: tileKind(sh) }))),
     black,
+    duck,
     notes: { pv: notesOf(sel.pv), live: notesOf(sel.live) },
     pdf: pdf && { name: pdf.name, page: pdf.page ?? 1 },
     // bookmarks of the file the seek bar is on (its position travels with the countdown tick)
@@ -1593,6 +1620,8 @@ function onRemote(m) {
     if (l && (m.id === null || l.shots.some(sh => sh.id === m.id))) selectShot(m.layer, m.id);
   } else if (m.cmd === 'go') {
     go();
+  } else if (m.cmd === 'duck') {
+    toggleDuck();
   } else if (m.cmd === 'black') {
     toggleBlack();
   } else if (m.cmd === 'trans') {
@@ -2636,6 +2665,10 @@ $('plCross').onchange = guard(async () => {
   await shotChanged(shot);
 });
 $('goBtn').onclick = guard(go);
+$('duckBtn').onclick = () => {
+  toggleDuck();
+  $('duckBtn').blur();
+};
 $('blackBtn').onclick = () => {
   toggleBlack();
   // a focused button would also be pressed by the Space meant for GO
@@ -2892,6 +2925,10 @@ document.addEventListener('keydown', e => {
   if (e.code === 'KeyB') {
     e.preventDefault();
     return toggleBlack();
+  }
+  if (e.code === 'KeyD') {
+    e.preventDefault();
+    return toggleDuck();
   }
   if (e.code !== 'Space' && e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
   e.preventDefault();
