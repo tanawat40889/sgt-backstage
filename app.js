@@ -997,7 +997,7 @@ function setBlack(on) {
 
 /* ---------- lower the music (someone is about to speak) ---------- */
 
-const DUCK = 0.35;
+const DUCK = 0.2;
 let duck = false;
 
 function setDuck(on) {
