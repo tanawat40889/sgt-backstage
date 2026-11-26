@@ -21,7 +21,6 @@
 
   #team { font-size: min(4vw, 6vh); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #14b8a6; }
   #time { font-size: min(30vw, 46vh); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--c); }
-  /* the cue this team does next: the line they act on, so it is the second-biggest thing */
   #next { font-size: min(6.5vw, 11vh); font-weight: 700; line-height: 1.2; max-width: 100%; overflow-wrap: anywhere; }
   .sub { font-size: min(3.2vw, 5vh); color: var(--dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sub b { color: #ededed; font-weight: 600; }
@@ -33,7 +32,6 @@
   #back:hover { color: #ededed; }
 
 
-  /* asked for when the page was opened without a code in its address */
   #enter { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(320px, 100%); margin: 0 auto; }
   #enter p { margin: 0; color: #8a8a8a; line-height: 1.6; }
   #code { font: inherit; width: 100%; padding: 14px; font-size: 34px; font-weight: 800; letter-spacing: .14em; text-align: center; color: #ededed; background: #0a0a0a; border: 2px solid #262626; border-radius: 14px; font-variant-numeric: tabular-nums; }
@@ -64,8 +62,6 @@
 <script>
 const $ = id => document.getElementById(id);
 
-// #room            -> time left on the track
-// #room/Spotlight  -> that team's cue countdown
 const [room, teamEnc] = location.hash.slice(1).split('/');
 const team = teamEnc ? decodeURIComponent(teamEnc) : null;
 addEventListener('hashchange', () => location.reload());
@@ -88,14 +84,12 @@ function line(id, label, text) {
   $(id).replaceChildren(label, Object.assign(document.createElement('b'), { textContent: text ?? '' }));
 }
 
-// d: { left, total, name, teams } or null when nothing with a length is live
 function show(d) {
   $('track').textContent = d ? `${d.name} · เหลือ ${fmt(d.left)}` : '';
   $('fill').style.width = d ? `${(1 - d.left / d.total) * 100}%` : '0';
 
   if (team) return showTeam(d, d?.teams?.[team]);
 
-  // plain page: big number is the time left on the track
   $('track').textContent = d ? d.name : '';
   $('time').textContent = d ? fmt(d.left) : '–:––';
   tone(d ? d.left : null, 30, 10);
@@ -107,7 +101,6 @@ function show(d) {
   })));
 }
 
-// team page: big number is the time until this team's next cue
 function showTeam(d, st) {
   setText('team', team);
   const nx = st?.next;
@@ -118,14 +111,12 @@ function showTeam(d, st) {
   line('now', 'ตอนนี้: ', st?.now);
 }
 
-// colour by urgency; sec === null means nothing to count
 function tone(sec, warnAt, soonAt) {
   document.body.classList.toggle('idle', sec == null);
   document.body.classList.toggle('warn', sec != null && sec <= warnAt && sec > soonAt);
   document.body.classList.toggle('soon', sec != null && sec <= soonAt);
 }
 
-// the control page sends a few times a second; silence means it is closed or unreachable
 let stale;
 function got(d) {
   show(d);
@@ -133,12 +124,10 @@ function got(d) {
   stale = setTimeout(() => show(null), 3000);
 }
 
-// the same room also carries messages for the remote control; only the countdown ones matter here
 function onMessage(m) {
   if (m && 'd' in m) got(m.d);
 }
 
-// other devices: peer-to-peer link to the control page, retried until it is up
 function connect() {
   const peer = new Peer();
   let done = false;
@@ -158,15 +147,12 @@ function connect() {
   peer.on('disconnected', retry);
 }
 
-// team page -> back to the page that lists the track time and every team
 if (team) {
   $('back').href = `#${room}`;
   $('back').hidden = false;
 }
 
 
-// Opened without a code (typed address, bookmark): ask for the six digits shown on the
-// control page, then carry on as if the link had contained them.
 function askCode() {
   const KEY = 'sgtbs-last-code';
   const digits = () => $('code').value.replace(/\D/g, '').slice(0, 6);
@@ -183,19 +169,16 @@ function askCode() {
     e.preventDefault();
     if (digits().length !== 6) return;
     localStorage.setItem(KEY, digits());
-    // the page reloads itself when the address gains a code
     location.hash = digits();
   };
   $('code').focus();
 }
 
 if (!room) {
-  // nothing to count yet: the page is just the code form
   for (const id of ['time', 'bar', 'track']) $(id).hidden = true;
   askCode();
 } else {
   show(null);
-  // same browser as the control page: works with no network
   new BroadcastChannel(`sgtobs-countdown-${room}`).onmessage = e => onMessage(e.data);
   const sc = document.createElement('script');
   sc.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';

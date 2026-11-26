@@ -21,7 +21,7 @@ Requires Chrome or Edge on desktop (File System Access API). Third-party code is
 ## Architecture
 
 ### Pages
-- `index.html` + `app.js` + `style.css`: the control page. Almost all logic lives in `app.js`, organised in `/* ---------- section ---------- */` blocks.
+- `index.html` + `app.js` + `style.css`: the control page. Almost all logic lives in `app.js`.
 - `output.html`: the projector window. It has no logic of its own: the control page opens it with `window.open`, the page calls `opener.outputReady(window)`, and from then on the control page builds DOM directly inside it (`stages.out`).
 - `countdown.html`, `remote.html`: standalone pages for other devices. They only talk to the control page through the "room" (below).
 

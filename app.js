@@ -1,5 +1,4 @@
 const EXT = '.sgtbs';
-// the extension and format marker used before the rename; still opened, then converted
 const OLD_EXT = '.sgtobs';
 const APP_IDS = ['sgtbs', 'sgtobs'];
 const MEDIA_DIR = 'media';
@@ -10,39 +9,27 @@ const KINDS = {
   image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'],
   video: ['mp4', 'webm', 'mov', 'm4v'],
   audio: ['mp3', 'wav', 'aac', 'm4a', 'ogg', 'flac'],
-  // slides exported from PowerPoint / Canva / Keynote
   pdf: ['pdf'],
 };
 
-// source types that draw a picture (and so have position / size / crop)
 const VISUAL = ['image', 'video', 'camera', 'screen', 'pdf'];
-// source types fed by a MediaStream
 const STREAMED = ['camera', 'mic', 'screen'];
 const DEV_KIND = { camera: 'videoinput', mic: 'audioinput' };
 
 const LAYERS = 3;
 const SMOOTH_MS = 500;
-// with Smooth, sound fades this long: music cut in half a second still sounds like a cut
 const AUDIO_FADE_MS = 1500;
 
 const $ = id => document.getElementById(id);
 
-// current project: { dir, fh, data }
 let cur = null;
-// shot id selected per layer (null = clear layer)
 let sel = { pv: [], live: [] };
 let stages = {};
 let trans = 'cut';
-// shot open in the inspector: { shotId, srcId }
 let edit = null;
-// projector window, null when closed
 let outWin = null;
-// file src -> object URL (absent = file missing)
 const urls = new Map();
-// stream key -> Promise<MediaStream>, shared by every stage showing that source
 const streams = new Map();
-
-/* ---------- recent folders (IndexedDB) ---------- */
 
 function db() {
   return new Promise((res, rej) => {
@@ -87,17 +74,13 @@ async function remember(dir) {
   return id;
 }
 
-// The project open in this tab (its id in the recent list), so a refresh comes back
-// to it. Per tab, on purpose: a new tab or window still starts on the home page.
 const OPEN_KEY = 'sgtbs-open';
 
 async function resumeProject() {
   const id = sessionStorage.getItem(OPEN_KEY);
   const r = id && (await recentAll()).find(x => x.id === id);
   if (!r) return sessionStorage.removeItem(OPEN_KEY);
-  // still allowed: straight back in
   if (await r.handle.queryPermission({ mode: 'readwrite' }) === 'granted') return openFolder(r.handle);
-  // the browser wants to ask again, and only lets that happen on a click
   $('resumeName').textContent = r.name;
   $('resume').hidden = false;
   $('resumeBtn').onclick = guard(async () => {
@@ -108,8 +91,6 @@ async function resumeProject() {
 
 const forget = id => store('readwrite', s => s.delete(id));
 
-// The project this tab holds the lock on: { id, release }. Two tabs saving the same
-// .sgtbs would overwrite each other's work, so a second tab is warned before opening it.
 let projLock = null;
 
 function lockProject(id) {
@@ -117,13 +98,10 @@ function lockProject(id) {
   return new Promise(res => {
     navigator.locks.request(`sgtbs-project-${id}`, { ifAvailable: true }, lock => {
       if (!lock) return res(null);
-      // held until release() is called, or until this tab goes away
       return new Promise(release => res({ id, release }));
     });
   });
 }
-
-/* ---------- project file ---------- */
 
 function newProject(name) {
   const now = new Date().toISOString();
@@ -142,7 +120,6 @@ function newLayers() {
   return Array.from({ length: LAYERS }, (_, i) => ({ name: `Layer ${i + 1}`, shots: [] }));
 }
 
-// def: { type, name, ...type-specific fields, stream? }
 function newSource(canvas, { stream, ...def }) {
   const s = { id: crypto.randomUUID(), ...def };
   if (VISUAL.includes(s.type)) {
@@ -152,12 +129,10 @@ function newSource(canvas, { stream, ...def }) {
   return s;
 }
 
-// bring files written by older versions up to the current shape
 function normalize(data) {
   data.canvas ??= { width: 1920, height: 1080 };
   if (!Array.isArray(data.layers)) data.layers = newLayers();
   for (const l of data.layers) {
-    // v1 shots were a single source
     l.shots = (l.shots ?? []).map(s => {
       if (s.sources) return s;
       const { id, ...def } = s;
@@ -176,7 +151,6 @@ async function ensurePerm(dir) {
   return await dir.requestPermission(o) === 'granted';
 }
 
-// first project file in the folder with this extension, or null
 async function findProjectFile(dir, ext) {
   const names = [];
   for await (const [n, h] of dir.entries()) {
@@ -204,13 +178,10 @@ async function readProject(fh) {
   return normalize(data);
 }
 
-// returns { fh, data, created, convertedFrom }
 async function loadOrCreate(dir) {
   let fh = await findProjectFile(dir, EXT);
   if (fh) return { fh, data: await readProject(fh), created: false };
 
-  // a folder from before the rename: copy its project into a file with the new
-  // extension and work on that; the old file is left untouched
   const old = await findProjectFile(dir, OLD_EXT);
   if (old) {
     const data = await readProject(old);
@@ -270,21 +241,15 @@ async function save() {
   await writeProject(cur.fh, cur.data);
 }
 
-// for edits that fire on every keystroke
 let saveTimer = null;
 function saveSoon() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(guard(save), 400);
 }
 
-/* ---------- undo / redo ---------- */
-
-// Every save is a step. A snapshot is the whole project as JSON; quick edits (typing,
-// dragging) are already grouped by saveSoon(), so one step = one pause in editing.
 const HIST_MAX = 100;
 const hist = { undo: [], redo: [], base: '', key: '' };
 
-// what counts as an edit: turning a PDF page is running the show, not editing it
 const histKey = data => JSON.stringify(data, (k, v) => (k === 'updatedAt' || k === 'page' ? undefined : v));
 
 function resetHistory() {
@@ -307,7 +272,6 @@ const redo = () => stepHistory('redo', 'undo', 'ทำซ้ำแล้ว', '�
 
 async function stepHistory(fromKey, toKey, done, none) {
   if (!cur) return;
-  // an edit still waiting to be saved becomes its own step first (and clears redo)
   if (saveTimer) await save();
   const from = hist[fromKey];
   const to = hist[toKey];
@@ -317,7 +281,6 @@ async function stepHistory(fromKey, toKey, done, none) {
   const data = JSON.parse(from.pop());
   const oldSrcs = new Map(old.layers.flatMap(l => l.shots).flatMap(sh => sh.sources).map(x => [x.id, x]));
   for (const x of data.layers.flatMap(l => l.shots).flatMap(sh => sh.sources)) {
-    // PDFs stay on the page they are on now
     const o = oldSrcs.get(x.id);
     if (o?.page) x.page = o.page;
     else if (o) delete x.page;
@@ -328,10 +291,8 @@ async function stepHistory(fromKey, toKey, done, none) {
   hist.base = JSON.stringify(data);
   hist.key = histKey(data);
   await Promise.all(allShots().flatMap(sh => sh.sources).filter(x => x.src).map(x => loadUrl(x.src)));
-  // a scene that no longer exists leaves its layer empty
   for (const ids of [sel.pv, sel.live]) ids.forEach((id, i) => { if (id && !findShot(id)) ids[i] = null; });
   if (edit && !findShot(edit.shotId)) edit = null;
-  // only scenes that changed are rebuilt, so the rest keep playing untouched
   rerender(sh => !sh || changed.has(sh.id));
   gcStreams();
   tpKey = '';
@@ -344,7 +305,6 @@ async function stepHistory(fromKey, toKey, done, none) {
 async function closeProject() {
   if (cur && saveTimer) await save();
   setBlack(false);
-  // also blanks the output window, which stays open across projects
   for (const st of Object.values(stages)) {
     dropAudio(st.el);
     st.el.replaceChildren();
@@ -364,29 +324,21 @@ async function closeProject() {
   $('unmute').hidden = true;
 }
 
-// songs play one after another when the shot is a playlist, or when its list loops
-// (Loop alone = back to back, no crossfade)
 const isList = shot => !!(shot.playlist || shot.plLoop);
 
 const allShots = () => cur.data.layers.flatMap(l => l.shots);
 const findShot = id => allShots().find(s => s.id === id);
 
-/* ---------- PDF slides ---------- */
-
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
-// file src -> Promise<PDFDocumentProxy>
 const pdfDocs = new Map();
-// "src#page" -> Promise<object URL of that page as a PNG>
 const pdfPages = new Map();
 let pdfLibLoading = null;
 
-// the reader is only fetched once a project actually uses a PDF
 function pdfLib() {
   pdfLibLoading ??= loadScript(`${PDFJS}pdf.min.js`).then(() => {
     pdfjsLib.GlobalWorkerOptions.workerSrc = `${PDFJS}pdf.worker.min.js`;
     return pdfjsLib;
   });
-  // a failed download (offline) may be retried later
   pdfLibLoading.catch(() => { pdfLibLoading = null; });
   return pdfLibLoading;
 }
@@ -400,8 +352,6 @@ function pdfDoc(src) {
   return pdfDocs.get(src);
 }
 
-// Every stage shows the same picture of a page, so each page is drawn only once,
-// at the project's canvas width (never below 1280 px, capped at 2560 px).
 function pdfPageUrl(src, n) {
   const key = `${src}#${n}`;
   if (!pdfPages.has(key)) {
@@ -419,7 +369,6 @@ function pdfPageUrl(src, n) {
   return pdfPages.get(key);
 }
 
-// Go to page n of a PDF source: Preview, Live and Output all change together.
 async function setPage(s, n) {
   const doc = await pdfDoc(s.src);
   n = Math.max(1, Math.min(doc.numPages, Math.round(n) || 1));
@@ -429,17 +378,13 @@ async function setPage(s, n) {
   }
   renderInsp();
   const url = await pdfPageUrl(s.src, n);
-  // a later page change may have overtaken this one while it was being drawn
   if ((s.page ?? 1) !== n) return;
   for (const st of Object.values(stages)) {
     for (const img of st.el.querySelectorAll(`img[data-sid="${s.id}"]`)) img.src = url;
   }
-  // draw the next page ahead of time, so moving forward is instant
   if (n < doc.numPages) pdfPageUrl(s.src, n + 1).catch(() => {});
 }
 
-// The PDF that the arrow keys / a presentation clicker turn: the one on Live
-// (topmost layer first), else the one waiting on Preview.
 function pdfTarget() {
   for (const ids of [sel.live, sel.pv]) {
     for (const id of ids) {
@@ -450,25 +395,20 @@ function pdfTarget() {
   return null;
 }
 
-// dir: +1 next, -1 previous. Returns false when no PDF is showing. Also called by output.html.
 function pdfKey(dir) {
   const s = cur && pdfTarget();
   if (s) guard(setPage)(s, (s.page ?? 1) + dir);
   return !!s;
 }
 
-/* ---------- cameras / audio inputs / screen capture ---------- */
-
 async function listDevices(type) {
   const all = await navigator.mediaDevices.enumerateDevices();
   return all.filter(d => d.kind === DEV_KIND[type] && d.deviceId !== 'default' && d.deviceId !== 'communications');
 }
 
-// one capture per screen source, one per physical device
 const streamKey = s => s.type === 'screen' ? `screen:${s.id}` : `${s.type}:${s.deviceId}`;
 
 async function openStream(s) {
-  // ids differ per machine, so fall back to matching the saved label
   const all = await listDevices(s.type);
   const d = all.find(x => x.deviceId === s.deviceId) ?? all.find(x => x.label && x.label === s.label);
   const c = { deviceId: { exact: d?.deviceId || s.deviceId } };
@@ -480,7 +420,6 @@ async function openStream(s) {
 function getStream(s) {
   const k = streamKey(s);
   if (!streams.has(k)) {
-    // a screen capture can only start from a user click, see pickScreen
     if (s.type === 'screen') return Promise.reject(new DOMException('no capture yet', 'NeedPick'));
     const p = openStream(s);
     p.catch(() => streams.delete(k));
@@ -495,7 +434,6 @@ function stopStream(k) {
   p?.then(st => st.getTracks().forEach(t => t.stop()), () => {});
 }
 
-// stop captures no source refers to any more
 function gcStreams() {
   const used = new Set(allShots().flatMap(sh => sh.sources).filter(s => STREAMED.includes(s.type)).map(streamKey));
   for (const k of [...streams.keys()]) if (!used.has(k)) stopStream(k);
@@ -506,7 +444,6 @@ function setScreenStream(s, st) {
   stopStream(k);
   const p = Promise.resolve(st);
   streams.set(k, p);
-  // the user can end sharing from the browser's own bar
   st.getVideoTracks()[0].addEventListener('ended', () => {
     if (streams.get(k) !== p) return;
     streams.delete(k);
@@ -528,9 +465,6 @@ async function pickScreen(s) {
   rerender(sh => sh.sources.some(x => x.id === s.id));
 }
 
-/* ---------- open flow ---------- */
-
-// the folder picker; null when the user backs out of it
 async function pickDir(id) {
   try {
     return await showDirectoryPicker({ id, mode: 'readwrite' });
@@ -540,20 +474,15 @@ async function pickDir(id) {
   }
 }
 
-// "open an existing project": the folder that holds the .sgtbs file and media/
-// (a file picker could not do this: the browser would then hide media/ from us)
 async function openExisting() {
   const dir = await pickDir('sgtobs');
   if (!dir) return;
   if (!await ensurePerm(dir)) return toast('ไม่ได้รับอนุญาตให้เข้าถึง folder', true);
   const found = await findProjectFile(dir, EXT) ?? await findProjectFile(dir, OLD_EXT);
-  // never turn someone's ordinary folder into a project without saying so
   if (!found && !await ask(`"${dir.name}" ยังไม่มีไฟล์โปรเจค (${EXT})`,
     'จะสร้างโปรเจคใหม่ใน folder นี้เลยไหม จะเพิ่มไฟล์โปรเจคและ folder media/ เข้าไป', 'สร้างโปรเจคที่นี่', false)) return;
   await openFolder(dir);
 }
-
-/* "new project": name it, choose where it goes, and a folder of that name is made there */
 
 function openNewDialog() {
   $('newName').value = '';
@@ -562,13 +491,11 @@ function openNewDialog() {
   $('newName').focus();
 }
 
-// what to tell the user when the browser cannot reach the place they picked
 const NO_ACCESS = 'browser เข้าถึงตำแหน่งนี้ไม่ได้ ลองเลือกที่เก็บอื่น (เช่น folder ที่สร้างเองใน home) หรือบน Mac ให้เปิด System Settings → Privacy & Security → Files and Folders แล้วอนุญาต browser นี้';
 
 async function createProject() {
   const name = $('newName').value.trim();
   $('newErr').textContent = '';
-  // each stage names itself, so a failure says where it happened
   let step = 'ตรวจชื่อ';
   try {
     if (!name) throw new Error('ใส่ชื่อโปรเจคก่อน');
@@ -579,9 +506,6 @@ async function createProject() {
     if (!parent) return;
     if (!await ensurePerm(parent)) throw new Error('ไม่ได้รับอนุญาตให้เข้าถึง folder');
 
-    // List what is there. This proves the browser can really read the place (the picker
-    // lets a folder be chosen even when the system then refuses access to it), and
-    // finds a clash of names without guessing from an error.
     step = 'อ่านที่เก็บ';
     let taken = false;
     try {
@@ -589,7 +513,6 @@ async function createProject() {
     } catch (e) {
       throw new Error(`${NO_ACCESS} (${e.name})`);
     }
-    // refuse to reuse a name, so nothing that is already there can be touched
     if (taken) throw new Error(`ใน "${parent.name}" มี "${name}" อยู่แล้ว ใช้ชื่ออื่น หรือปิดหน้านี้แล้วกด "เปิดโปรเจคที่มีอยู่"`);
 
     step = 'สร้าง folder';
@@ -597,18 +520,15 @@ async function createProject() {
     try {
       dir = await parent.getDirectoryHandle(name, { create: true });
     } catch (e) {
-      // "not found" while creating means the place itself could not be reached
       throw new Error(e.name === 'NotFoundError' || e.name === 'NotAllowedError' || e.name === 'NoModificationAllowedError'
         ? `${NO_ACCESS} (${e.name})` : e.message);
     }
 
-    // the dialog stays up until the project is really open, so any failure is still visible
     step = 'สร้างไฟล์โปรเจค';
     await openFolder(dir);
     $('newDlg').close();
   } catch (e) {
     console.error(`createProject failed at "${step}"`, e);
-    // a toast would sit behind the dialog
     $('newErr').textContent = `[${step}] ${e.message}`;
   }
 }
@@ -645,8 +565,6 @@ async function goHome() {
   await renderRecent();
   show('home');
 }
-
-/* ---------- render ---------- */
 
 function show(id) {
   for (const v of document.querySelectorAll('.view')) v.hidden = v.id !== id;
@@ -708,37 +626,25 @@ async function renderProject() {
   renderInsp();
 }
 
-/* ---------- stages (preview / live) ---------- */
-
 const makeStage = el => ({ el, cur: cur.data.layers.map(() => null), nodes: cur.data.layers.map(() => null) });
 
 const pct = v => `${v * 100}%`;
 
-// Gradient stops for one fade between `from` % and `to` %, opaque -> clear (or clear ->
-// opaque when `rising`). A straight ramp shows as a band with two visible edges, so the
-// opacity follows an S-curve instead: it leaves and arrives gently, like a lens vignette.
 function fadeStops(from, to, rising) {
   const STEPS = 12;
   return Array.from({ length: STEPS + 1 }, (_, k) => {
     const t = k / STEPS;
-    // smootherstep: zero slope and zero curvature at both ends
     const e = t * t * t * (t * (t * 6 - 15) + 10);
     const alpha = rising ? e : 1 - e;
     return `rgba(0,0,0,${alpha.toFixed(3)}) ${(from + (to - from) * t).toFixed(2)}%`;
   }).join(', ');
 }
 
-// position, size and crop of one source box (.src > .view > media), in canvas pixels.
-// .view is the cropped picture, fitted inside the box with its aspect ratio kept.
 function applyGeom(box, s) {
   const { width: W, height: H } = cur.data.canvas;
   Object.assign(box.style, { left: pct(s.x / W), top: pct(s.y / H), width: pct(s.w / W), height: pct(s.h / H) });
 
   const view = box.firstChild;
-  // Soft edges, so the source underneath shows through. Every mask below is one
-  // layer; the picture is visible only where all of them are opaque (intersect).
-  //   feather: fades to nothing over f % of the width / height on each side
-  //   diag:    fades out across a diagonal through the middle, `soft` % wide
   const masks = [];
   const f = s.feather;
   if (f && (f.l || f.t || f.r || f.b)) {
@@ -748,7 +654,6 @@ function applyGeom(box, s) {
     );
   }
   if (s.diag) masks.push(`linear-gradient(to ${s.diag.to}, ${fadeStops(50 - s.diag.soft / 2, 50 + s.diag.soft / 2, false)})`);
-  // rounded corners, given in canvas pixels: 100cqw is this box's width, which is s.w of them
   view.style.borderRadius = s.radius ? `${s.radius / s.w * 100}cqw` : '';
   for (const p of ['mask-image', '-webkit-mask-image']) view.style.setProperty(p, masks.join(', '));
   view.style.setProperty('mask-composite', 'intersect');
@@ -757,7 +662,6 @@ function applyGeom(box, s) {
   const m = view.firstChild;
   const iw = m.naturalWidth || m.videoWidth;
   const ih = m.naturalHeight || m.videoHeight;
-  // size is unknown until the media has loaded; shotNode calls back then
   view.style.visibility = iw ? '' : 'hidden';
   if (!iw) return;
 
@@ -768,7 +672,6 @@ function applyGeom(box, s) {
   Object.assign(m.style, { width: pct(1 / fx), height: pct(1 / fy), left: pct(-c.l / 100 / fx), top: pct(-c.t / 100 / fy) });
 }
 
-// feed a stream into a media element; on failure say why via note()
 function feed(m, s, note, onStream) {
   getStream(s).then(st => {
     m.srcObject = st;
@@ -783,11 +686,9 @@ function feed(m, s, note, onStream) {
   });
 }
 
-// mode: 'pv' | 'live' | 'out' — sound plays only from the live stage
 function shotNode(shot, mode) {
   const n = el('div', 'lyr');
   const tags = el('div', 'tags');
-  // status labels are for the operator, never for the projector
   const note = (text, fn) => {
     if (mode === 'out') return;
     const t = el(fn ? 'button' : 'span', 'tag', text);
@@ -795,9 +696,7 @@ function shotNode(shot, mode) {
     tags.append(t);
   };
 
-  // every sound of this shot goes through one bus, so the whole shot can be faded as one
   const bus = () => (n._bus ??= liveBus());
-  // playlist shots play their audio files one after another instead of all at once
   const songs = isList(shot) ? [] : null;
 
   shot.sources.forEach((s, k) => {
@@ -814,11 +713,9 @@ function shotNode(shot, mode) {
         a.dataset.shot = shot.id;
         a.dataset.sid = s.id;
         if (starts.has(s.id)) a.currentTime = starts.get(s.id);
-        // in a playlist the list loops as a whole, not each song
         a.loop = !!s.loop && !inList;
         meterElement(a, bus());
         if (inList) {
-          // setStage must not start these; runPlaylist does, in order
           a.dataset.pl = 1;
           songs[songs.length - 1] = a;
         }
@@ -832,7 +729,6 @@ function shotNode(shot, mode) {
     let m;
     if (s.type === 'pdf') {
       if (!urls.has(s.src)) return note(`ไม่พบไฟล์ ${s.src}`);
-      // the current page, drawn once and shown as a picture; setPage swaps it later
       m = el('img');
       m.dataset.sid = s.id;
       pdfPageUrl(s.src, s.page ?? 1).then(u => { m.src = u; }, e => {
@@ -851,8 +747,6 @@ function shotNode(shot, mode) {
       if (s.type === 'video') m.loop = !!s.loop;
       if (s.type === 'video') {
         if (starts.has(s.id)) m.currentTime = starts.get(s.id);
-        // Preview never plays a video: it holds one still frame (the start position),
-        // which is all that placing and cropping it needs. Live and Output play.
         if (mode === 'pv') {
           m.autoplay = false;
           m.preload = 'auto';
@@ -867,7 +761,6 @@ function shotNode(shot, mode) {
     }
     const box = el('div', 'src');
     box.dataset.src = s.id;
-    // first source in the list is on top
     box.style.zIndex = shot.sources.length - k;
     const view = el('div', 'view');
     view.append(m);
@@ -885,7 +778,6 @@ function shotNode(shot, mode) {
   return n;
 }
 
-// apply a per-layer selection to a stage; only layers that changed transition
 function setStage(st, ids, ms, mode) {
   ids.forEach((id, i) => {
     if (st.cur[i] === id) return;
@@ -895,7 +787,6 @@ function setStage(st, ids, ms, mode) {
     st.nodes[i] = node;
 
     if (node) {
-      // layer 1 is on top
       node.style.zIndex = ids.length - i;
       node.style.setProperty('--i', i);
       node.style.transition = `opacity ${ms}ms`;
@@ -912,10 +803,8 @@ function setStage(st, ids, ms, mode) {
     if (old) {
       old.style.transition = `opacity ${ms}ms`;
       old.style.opacity = 0;
-      // the countdown should already follow the incoming shot
       old.dataset.out = 1;
       if (ms) fadeBus(old, null, 0, AUDIO_FADE_MS);
-      // an outgoing shot with sound stays (invisible) until its fade-out is done
       setTimeout(() => {
         dropAudio(old);
         old.remove();
@@ -929,7 +818,6 @@ function pushLive(ms) {
   if (stages.out) setStage(stages.out, sel.live, ms, 'out');
 }
 
-// rebuild every on-screen copy of the shots matching pred (file videos restart)
 function rerender(pred) {
   for (const st of Object.values(stages)) {
     st.cur.forEach((id, i) => {
@@ -940,7 +828,6 @@ function rerender(pred) {
   pushLive(0);
 }
 
-// move/resize/crop in place, without restarting anything
 function regeom(s) {
   for (const st of Object.values(stages)) {
     for (const box of st.el.querySelectorAll(`[data-src="${s.id}"]`)) applyGeom(box, s);
@@ -958,17 +845,11 @@ function go() {
   actx?.resume();
   sel.live = [...sel.pv];
   pushLive(trans === 'smooth' ? SMOOTH_MS : 0);
-  // a GO from the remote, after a refresh that reopened the project by itself, may come
-  // before anyone has clicked this page, and then the browser keeps the sound off
   setTimeout(() => { if (actx && actx.state !== 'running') showUnmute(); }, 400);
-  // the start positions picked on Preview have now been used
   starts.clear();
   mark();
 }
 
-/* ---------- blackout: output to black, sound faded out ---------- */
-
-// what is live keeps running underneath, so coming back is instant and in step
 let black = false;
 
 function setBlack(on) {
@@ -992,19 +873,14 @@ function toggleBlack() {
   sendState();
 }
 
-/* ---------- live audio: routing + level meter ---------- */
-
 const DB_FLOOR = -60;
 let actx = null;
 let master = null;
-// one analyser per channel (L, R)
 let analysers = [];
 
-// built on first use: browsers only start audio after a user gesture
 function audioGraph() {
   if (!actx) {
     actx = new AudioContext();
-    // explicit stereo so a mono source reads on both bars
     master = new GainNode(actx, { channelCount: 2, channelCountMode: 'explicit' });
     const split = new ChannelSplitterNode(actx, { numberOfOutputs: 2 });
     if (black) master.gain.value = 0;
@@ -1020,8 +896,6 @@ function audioGraph() {
   return actx;
 }
 
-// everything audible on Live goes through master, so the meter shows the real mix
-// one per live shot node: element -> its own gain -> shot bus -> master
 function liveBus() {
   const b = new GainNode(audioGraph());
   b.connect(master);
@@ -1036,7 +910,6 @@ function meterElement(m, bus) {
 }
 
 function meterStream(m, st, bus) {
-  // the graph plays it; unmuted, the element would play it a second time
   m.muted = true;
   const ctx = audioGraph();
   m._an = ctx.createMediaStreamSource(st);
@@ -1052,16 +925,11 @@ function ramp(gainNode, from, to, sec) {
   g.linearRampToValueAtTime(to, t + sec);
 }
 
-// fade all sound of a live shot node; from null = from wherever it is now
 function fadeBus(node, from, to, ms) {
   if (node._bus) ramp(node._bus, from, to, ms / 1000);
 }
 
-// play tracks in order, overlapping each change by `cross` seconds (0 = back to back);
-// loop() is asked at the end of the list, so the option can change while it plays.
-// Returns { jump(k) } to switch straight to track k.
 function runPlaylist(tracks, cross, loop) {
-  // only the watcher of the most recently started track may hand over
   let gen = 0;
   const play = (k, again) => {
     const my = ++gen;
@@ -1072,9 +940,7 @@ function runPlaylist(tracks, cross, loop) {
       if (my !== gen || !a.isConnected) return;
       const last = k === tracks.length - 1;
       if (last && !loop()) return;
-      // a lone looping song just starts over; nothing to crossfade with
       const solo = tracks.length === 1;
-      // overlap is capped so a short track is never all crossfade
       const x = solo ? 0 : Math.min(cross, a.duration / 2 || 0);
       if (!a.ended && !(x > 0 && a.duration - a.currentTime <= x)) return;
       a.removeEventListener('timeupdate', watch);
@@ -1103,8 +969,6 @@ function runPlaylist(tracks, cross, loop) {
   };
 }
 
-// Start a media element. Without a click on this page first, the browser refuses to
-// play sound: remember which ones were refused and offer a button that starts them.
 function tryPlay(m) {
   m.play().then(() => { delete m.dataset.blocked; }, e => {
     if (e.name !== 'NotAllowedError') return;
@@ -1117,7 +981,6 @@ function showUnmute() {
   $('unmute').hidden = false;
 }
 
-// runs inside the click, which is what the browser waits for
 function unmute() {
   $('unmute').hidden = true;
   audioGraph();
@@ -1143,7 +1006,6 @@ let meterAt = 0;
 
 function meterTick(now = 0) {
   requestAnimationFrame(meterTick);
-  // seconds since the last frame, so fall speed does not depend on frame rate
   const dt = Math.min(0.5, (now - meterAt) / 1000);
   meterAt = now;
   document.querySelectorAll('#meter .bar').forEach((bar, ch) => {
@@ -1154,7 +1016,6 @@ function meterTick(now = 0) {
     }
     const db = pk ? 20 * Math.log10(pk) : -Infinity;
     const p = Math.max(0, Math.min(1, 1 - db / DB_FLOOR));
-    // jump up instantly, fall back slowly; the peak line lingers longer
     meterLvl[ch] = Math.max(p, meterLvl[ch] - 1.5 * dt);
     meterHold[ch] = Math.max(meterLvl[ch], meterHold[ch] - 0.3 * dt);
     bar.firstElementChild.style.height = pct(1 - meterLvl[ch]);
@@ -1163,15 +1024,12 @@ function meterTick(now = 0) {
   });
 }
 
-/* ---------- output window (projector) ---------- */
-
 async function openOutput() {
   if (outWin && !outWin.closed) {
     outWin.close();
     return;
   }
   let feat = 'popup,width=960,height=540';
-  // put it fullscreen on a second display when the browser lets us
   if ('getScreenDetails' in window) {
     try {
       const sd = await getScreenDetails();
@@ -1184,7 +1042,6 @@ async function openOutput() {
   if (!window.open('output.html', 'sgtobs-output', feat)) throw new Error('Browser บล็อก popup — อนุญาต popup สำหรับหน้านี้ก่อน');
 }
 
-// called by output.html once it has loaded
 function outputReady(w) {
   outWin = w;
   $('outBtn').classList.add('on');
@@ -1199,7 +1056,6 @@ function outputClosed() {
   $('outBtn').textContent = 'เปิดจอ Output';
 }
 
-// mirror the current live stage into the output window
 function attachOutput() {
   if (!outWin || outWin.closed || !cur) return;
   const d = outWin.document;
@@ -1214,38 +1070,26 @@ function attachOutput() {
   }
 }
 
-/* ---------- layers / shots ---------- */
-
 const thaiWords = new Intl.Segmenter('th', { granularity: 'word' });
 
-// Short label for a scene tile, made from its name:
-//   "scene 1" -> "s1"   "Opening Song" -> "OS"   "intro" -> "in"   "song02.mp3" -> "s02"
-//   "ทดสอบ" -> "ทส"     "พื้นหลัง เปิดงาน" -> "พป"
 function abbr(name) {
   const MAX = 4;
-  // a file name's extension says nothing about the scene
   const base = name.replace(/\.[a-z0-9]{2,4}$/i, '').trim();
-  // words: split on spaces and punctuation, and between letters and digits
   let parts = base.split(/[\s\-_.,/()]+|(?<=\D)(?=\d)|(?<=\d)(?=\D)/).filter(Boolean);
-  // Thai is written without spaces, so let the browser find the words
   if (parts.length === 1 && /[ก-ฮ]/.test(base)) {
     parts = [...thaiWords.segment(base)].filter(w => w.isWordLike).map(w => w.segment);
   }
-  // a number is kept whole; a Thai word gives its first consonant, skipping leading vowels (เ แ โ ใ ไ)
   const head = w => (/^\d+$/.test(w) ? w : w.match(/[ก-ฮ]/)?.[0] ?? [...w][0]);
   if (parts.length > 1) return parts.map(head).join('').slice(0, MAX);
 
   const w = parts[0] ?? base;
   const thai = w.match(/[ก-ฮ]/g);
-  // one Thai word: its first consonant and the one that starts its second half
   if (thai) return thai.length > 1 ? thai[0] + thai[Math.floor(thai.length / 2)] : thai[0];
   return [...w].slice(0, 2).join('') || '?';
 }
 
-// the label on a scene's tile: the one typed by the user, else made from the name
 const tileLabel = shot => shot.abbr || abbr(shot.name);
 
-// what a scene mostly is, to tint its tile: its first picture source, else its first source
 const tileKind = shot => (shot.sources.find(s => VISUAL.includes(s.type)) ?? shot.sources[0])?.type ?? 'empty';
 
 function selectShot(i, id) {
@@ -1266,7 +1110,6 @@ function shotTile(i, shot) {
   const th = el('div', 'thumb');
   if (!shot) th.append(el('span', 'off', '⦸'));
   if (shot) {
-    // no preview picture: a short label made from the name, tinted by what the scene is
     t.dataset.kind = tileKind(shot);
     t.title = shot.note ? `${shot.name}\n✎ ${shot.note}` : shot.name;
     t.classList.toggle('noted', !!shot.note);
@@ -1310,7 +1153,6 @@ function renderLayers() {
   mark();
 }
 
-// highlight which shot of each layer is in preview / live / the inspector
 function mark() {
   for (const t of document.querySelectorAll('#layers .shot')) {
     const id = t.dataset.id || null;
@@ -1321,7 +1163,6 @@ function mark() {
   showNotes();
 }
 
-// notes of the scenes on a stage, top layer first
 const notesOf = ids => ids.map(id => id && findShot(id)?.note).filter(Boolean).join(' · ');
 
 function showNotes() {
@@ -1332,7 +1173,6 @@ function showNotes() {
   }
 }
 
-// def = first source of the new shot, or null for an empty shot
 async function addShot(i, def) {
   const shot = { id: crypto.randomUUID(), name: def?.name ?? 'Scene', sources: [] };
   if (def) {
@@ -1345,15 +1185,11 @@ async function addShot(i, def) {
   selectShot(i, shot.id);
 }
 
-// Ask before deleting; resolves true only when the user presses "ลบ".
-// Esc, clicking outside, or "ยกเลิก" all mean no.
 let askDone = null;
 
 const askDelete = (text, detail = '') => ask(text, detail, 'ลบ', true);
 
-// okLabel names the action; danger paints it red (for things that cannot be undone)
 function ask(text, detail, okLabel, danger) {
-  // a question still on screen is answered "no" by asking another
   askDone?.(false);
   return new Promise(res => {
     const d = $('askDlg');
@@ -1367,7 +1203,6 @@ function ask(text, detail, okLabel, danger) {
     $('askYes').textContent = okLabel;
     $('askYes').className = danger ? 'danger' : 'primary';
     d.showModal();
-    // so a stray Enter cancels instead of going ahead
     $('askNo').focus();
   });
 }
@@ -1392,15 +1227,10 @@ function renameShot() {
   $('shotName').select();
 }
 
-/* ---------- shot shortcuts (Ctrl + key) ---------- */
-
-// shot waiting for its key: { layer, shot }
 let capture = null;
 
-// e.code names the physical key, so shortcuts work on any keyboard layout (Thai included)
 const keyLabel = code => `Ctrl+${code.replace(/^(Key|Digit)/, '').replace(/^Numpad/, 'Num')}`;
 
-// in everything below, shot === null stands for the layer's "ว่าง" (nothing) tile
 const getHotkey = (i, shot) => (shot ? shot.hotkey : cur.data.layers[i].clearHotkey);
 
 function openShotMenu(e, i, shot) {
@@ -1430,7 +1260,6 @@ function openShotMenu(e, i, shot) {
 async function setHotkey(i, shot, code) {
   const l = cur.data.layers[i];
   if (code) {
-    // one layer shows one thing at a time, so a key may not point at two of its tiles
     for (const s of l.shots) if (s.hotkey === code) delete s.hotkey;
     if (l.clearHotkey === code) delete l.clearHotkey;
   }
@@ -1448,7 +1277,6 @@ async function onCaptureKey(e) {
     $('addMenu').hidden = true;
     return;
   }
-  // wait for a real key while only modifiers are down
   if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
   if (!e.ctrlKey) return toast('ต้องกด Ctrl ค้างไว้ด้วย', true);
   const { layer, shot } = capture;
@@ -1458,43 +1286,31 @@ async function onCaptureKey(e) {
   toast(`${shot?.name ?? `ว่าง (layer ${layer + 1})`} = ${keyLabel(e.code)}`);
 }
 
-// put everything bound to this key into Preview; returns false when nothing is
 function runHotkey(code) {
-  // [layer, shot id]; null id = clear that layer
   const hits = [];
   cur.data.layers.forEach((l, i) => {
     if (l.clearHotkey === code) hits.push([i, null]);
     else if (l.shots.some(s => s.hotkey === code)) hits.push([i, l.shots.find(s => s.hotkey === code).id]);
   });
-  // a shot (not a clear) on the topmost layer goes last, so the inspector ends on it
   for (const [i, id] of hits.sort((a, b) => !!a[1] - !!b[1] || b[0] - a[0])) selectShot(i, id);
   return hits.length > 0;
 }
-
-/* ---------- countdown (time left on live audio / video files) ---------- */
 
 const PEERJS_URL = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
 const QR_URL = 'https://unpkg.com/qrcode-generator@1.4.4/qrcode.js';
 const ROOM_KEY = 'sgtobs-room';
 
-// six digits: short enough to read out and type on a phone
 const newRoom = () => String(crypto.getRandomValues(new Uint32Array(1))[0] % 1e6).padStart(6, '0');
 const fmtRoom = r => `${r.slice(0, 3)} ${r.slice(3)}`;
 
-// Each operator's browser owns one room; only countdown pages opened with its id see it.
 let room = localStorage.getItem(ROOM_KEY);
-// (codes saved by earlier versions were letters and digits; those are replaced)
 if (!/^\d{6}$/.test(room ?? '')) localStorage.setItem(ROOM_KEY, room = newRoom());
 
-// same-browser windows get the countdown over this, with no network at all
 let cdChan = openRoomChannel();
-// other devices connect peer-to-peer (PeerJS); null until its library has loaded
 let peer = null;
 const conns = new Set();
-// 'off' | 'on' | 'retry' | 'nolib'
 let peerState = 'off';
 
-// remote.html in this same browser sends its commands back over the channel
 function openRoomChannel() {
   const ch = new BroadcastChannel(`sgtobs-countdown-${room}`);
   ch.onmessage = e => onRemote(e.data);
@@ -1508,19 +1324,13 @@ function loadScript(src) {
   });
 }
 
-// team = one cue-sheet team, or '' for the plain time-left page
 const REMOTE = '@remote';
 
-// what = '' for the plain time-left page, a cue-sheet team name for that team's page,
-// or REMOTE for the phone / tablet remote control
 function countdownUrl(what = $('cdTeam').value) {
   const page = new URL(what === REMOTE ? 'remote.html' : 'countdown.html', location.href).href;
   return `${page}#${room}${what && what !== REMOTE ? `/${encodeURIComponent(what)}` : ''}`;
 }
 
-/* ---------- remote control (remote.html on a phone / tablet) ---------- */
-
-// everything the remote draws: the scenes of each layer, and what is on Preview / Live
 function remoteState() {
   const pdf = pdfTarget();
   return {
@@ -1532,16 +1342,13 @@ function remoteState() {
     black,
     notes: { pv: notesOf(sel.pv), live: notesOf(sel.live) },
     pdf: pdf && { name: pdf.name, page: pdf.page ?? 1 },
-    // bookmarks of the file the seek bar is on (its position travels with the countdown tick)
     marks: (tp?.s.bookmarks ?? []).map(b => ({ t: b.t, name: b.name })),
-    // the files the seek bar can be put on, when the selected scene has more than one
     files: (tp?.files ?? []).map(f => ({ id: f.id, name: f.name })),
   };
 }
 
 let lastState = '';
 
-// sent whenever it changes (checked on the countdown tick), and on request
 function sendState(force) {
   const st = cur ? remoteState() : null;
   const json = JSON.stringify(st);
@@ -1551,8 +1358,6 @@ function sendState(force) {
   for (const c of conns) if (c.open) c.send({ st });
 }
 
-// ids of commands already carried out: a remote in this browser reaches us twice,
-// once over the channel and once over its peer connection
 const seenCmds = new Set();
 
 function onRemote(m) {
@@ -1565,7 +1370,6 @@ function onRemote(m) {
   if (m.cmd === 'hello') return sendState(true);
   if (!cur) return;
   if (m.cmd === 'select') {
-    // only a real layer index, and only a scene that really is on that layer (or null to empty it)
     const l = Number.isInteger(m.layer) ? cur.data.layers[m.layer] : null;
     if (l && (m.id === null || l.shots.some(sh => sh.id === m.id))) selectShot(m.layer, m.id);
   } else if (m.cmd === 'go') {
@@ -1579,13 +1383,11 @@ function onRemote(m) {
   } else if (m.cmd === 'pick') {
     pickFile(m.id);
   } else if (m.cmd === 'seek') {
-    // same bar as on the control page: it moves whatever that bar is on right now
     if (Number.isFinite(m.t)) seekTo(m.t);
   }
   sendState();
 }
 
-// the code other devices type in to find this control page
 function showRoom() {
   $('roomBtn').textContent = `รหัส ${fmtRoom(room)}`;
   $('cdCode').textContent = fmtRoom(room);
@@ -1617,7 +1419,6 @@ function startPeer() {
   peer.on('error', e => {
     console.error(e);
     if (e.type === 'unavailable-id') {
-      // another tab of this browser already holds the saved room: use a throwaway one here
       peer.destroy();
       cdChan.close();
       room = newRoom();
@@ -1638,7 +1439,6 @@ function fmtTime(sec) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
-// where one team stands at `pos` seconds into the track; list is sorted by time
 function teamState(list, pos) {
   const k = list.findIndex(c => c.t > pos);
   const at = k < 0 ? list.length : k;
@@ -1647,13 +1447,10 @@ function teamState(list, pos) {
 }
 
 function countdownTick() {
-  // with several files live, count down the one that ends last
   let best = null;
   let bestEl = null;
-  // cue sheets follow the clock of their own shot's file
   let teams = null;
   for (const m of stages.live?.el.querySelectorAll('video[src], audio[src]') ?? []) {
-    // skip playlist tracks still waiting their turn, and shots that are fading out
     if (!Number.isFinite(m.duration) || m.ended || m.paused || m.closest('[data-out]')) continue;
     const left = m.duration - m.currentTime;
     if (!best || left > best.left) {
@@ -1667,10 +1464,8 @@ function countdownTick() {
   $('cd').textContent = best ? `−${fmtTime(best.left)}` : '';
   $('cd').title = best?.name ?? '';
   $('cd').classList.toggle('soon', !!best && best.left <= 10);
-  // wrapped, because PeerJS cannot carry a bare null (nothing playing)
   const msg = {
     d: best && { ...best, teams },
-    // where the seek bar stands, for the remote's copy of it
     p: tp && { mode: tp.mode, sid: tp.s.id, name: tp.s.name, pos: tpPos(), dur: tp.dur },
   };
   cdChan.postMessage(msg);
@@ -1696,7 +1491,6 @@ function drawQr(cv, text) {
 }
 
 function renderCdPanel() {
-  // one page per team that appears in any cue sheet of this project
   const names = cur ? [...new Set(allShots().flatMap(sh => Object.keys(sh.cues ?? {})))] : [];
   const was = $('cdTeam').value;
   $('cdTeam').replaceChildren(
@@ -1737,21 +1531,12 @@ async function copyCdUrl() {
   toast('คัดลอก URL แล้ว');
 }
 
-/* ---------- transport: seek bar + bookmarks ---------- */
-
-// What the bar controls right now, or null:
-//   { mode: 'live', m, s, dur }  a file playing on Live (m = its media element)
-//   { mode: 'pv', s, dur }       the selected shot's file, not live yet: the bar sets where it will start
 let tp = null;
 let tpKey = '';
-// true while the user holds the slider, so the ticker does not fight the drag
 let tpDrag = false;
-// source id -> seconds: start positions picked on Preview, used up by the next Go
 const starts = new Map();
-// file src -> length in seconds (NaN until its metadata has loaded)
 const durs = new Map();
 
-// elapsed time rounds down (the countdown's fmtTime rounds up)
 const fmtPos = sec => fmtTime(Math.floor(sec));
 
 const srcOf = m => allShots().flatMap(sh => sh.sources).find(s => s.id === m.dataset.sid);
@@ -1768,10 +1553,6 @@ function durOf(s) {
 
 const tpPos = () => (tp.mode === 'live' ? tp.m.currentTime : starts.get(tp.s.id) ?? 0);
 
-// The selected shot wins, so a song can be lined up before it goes live;
-// with no file in the selected shot, the bar follows whatever is playing on Live.
-// { shotId, sid }: which file the bar is on, when the selected scene has several
-// (a video and its music, say). null = decide automatically.
 let tpPick = null;
 
 function pickFile(sid) {
@@ -1785,7 +1566,6 @@ function transportTarget(liveBest) {
   const shot = editShot();
   const files = shot?.sources.filter(x => (x.type === 'audio' || x.type === 'video') && urls.has(x.src)) ?? [];
   if (files.length) {
-    // a choice only holds while its scene stays selected and still has that file
     if (tpPick && (tpPick.shotId !== shot.id || !files.some(f => f.id === tpPick.sid))) tpPick = null;
     const mine = [...(stages.live?.el.querySelectorAll('video[src], audio[src]') ?? [])]
       .filter(m => m.dataset.shot === shot.id && !m.closest('[data-out]'));
@@ -1793,7 +1573,6 @@ function transportTarget(liveBest) {
       const s = files.find(f => f.id === tpPick?.sid) ?? files[0];
       return { mode: 'pv', s, dur: durOf(s), files };
     }
-    // on Live: the chosen file, else the track that is playing, else the last one to finish
     const m = (tpPick && mine.find(x => x.dataset.sid === tpPick.sid))
       ?? mine.findLast(x => !x.paused) ?? mine.findLast(x => x.ended);
     return m && srcOf(m) ? { mode: 'live', m, s: srcOf(m), dur: m.duration, files } : null;
@@ -1818,7 +1597,6 @@ function transportTick(liveBest) {
   $('tpMode').textContent = tp ? (tp.mode === 'live' ? 'LIVE' : 'PREVIEW') : '';
   $('tpMode').className = tp?.mode ?? '';
   $('tpName').textContent = tp ? tp.s.name : 'เลือก scene ที่มีเพลง / วิดีโอ';
-  // several files in the scene: the name becomes a list to choose which one the bar moves
   const files = tp?.files ?? [];
   const many = files.length > 1;
   const listKey = files.map(f => `${f.id}:${f.name}`).join('|');
@@ -1836,17 +1614,13 @@ function transportTick(liveBest) {
   if (!tpDrag) $('tpSeek').value = tpPos();
 }
 
-/* what is on Preview and on Live, layer by layer, shown inside the transport bar */
-
 const isFile = s => (s.type === 'audio' || s.type === 'video') && urls.has(s.src);
 const fmtDur = d => (Number.isFinite(d) ? fmtPos(d) : '');
 
 function songListTick() {
   for (const [stage, ids] of [['live', sel.live], ['pv', sel.pv]]) {
     const box = $(stage === 'live' ? 'plLive' : 'plPv');
-    // [layer index, scene] for every layer that shows something, top layer first
     const rows = cur ? ids.map((id, i) => [i, id && findShot(id)]).filter(r => r[1]) : [];
-    // rebuilt only when something shown has changed; times and highlight update every tick
     const key = rows.map(([i, sh]) => [i, sh.id, sh.name, isList(sh), sh.playlist && sh.cross, !!sh.plLoop,
       ...sh.sources.map(s => `${s.id}:${s.name}:${isFile(s) ? durOf(s) : s.page ?? ''}`)].join('|')).join('||');
     if (box.dataset.key !== key) {
@@ -1857,7 +1631,6 @@ function songListTick() {
     for (const li of box.querySelectorAll('li.file')) {
       const m = stages.live?.el.querySelector(`audio[data-sid="${li._src.id}"], video[data-sid="${li._src.id}"]`);
       const on = !!m && !m.paused && !m.ended && !m.closest('[data-out]');
-      // when a file starts, scroll its row to the middle of the list
       if (on && !li.classList.contains('on')) {
         const ol = li.parentNode;
         ol.scrollTop = li.offsetTop - (ol.clientHeight - li.offsetHeight) / 2;
@@ -1868,7 +1641,6 @@ function songListTick() {
   }
 }
 
-// one list per stage: a heading row per layer's scene, then a row per source in it
 function buildStageList(stage, rows) {
   const ol = el('ol');
   for (const [i, sh] of rows) {
@@ -1901,11 +1673,9 @@ function buildStageList(stage, rows) {
 
 function seekTo(t) {
   if (!tp) return;
-  // stop just short of the end, or the track would count as finished at once
   t = Math.max(0, Math.min(t, tp.dur - 0.1));
   if (tp.mode === 'pv') {
     starts.set(tp.s.id, t);
-    // show the frame it will start on
     const v = stages.pv.el.querySelector(`video[data-sid="${tp.s.id}"]`);
     if (v) {
       v.pause();
@@ -1914,15 +1684,11 @@ function seekTo(t) {
     return;
   }
   if (tp.m.paused) {
-    // a playlist song that is not playing: switch the list to it, rather than
-    // starting it on top of the one that is
     const node = tp.m.closest('.lyr');
     if (tp.m.dataset.pl && node._pl) node._pl.jump([...node.querySelectorAll('audio[data-pl]')].indexOf(tp.m));
-    // a finished track starts again from the new spot
     else tryPlay(tp.m);
   }
   tp.m.currentTime = t;
-  // keep the projector's copy of a video in step
   const twin = stages.out?.el.querySelector(`video[data-sid="${tp.s.id}"]`);
   if (twin) {
     twin.currentTime = t;
@@ -1930,8 +1696,6 @@ function seekTo(t) {
   }
 }
 
-// time scale under the slider: a label every 30 s and a line every 5 s,
-// widened in step for long files so labels never overlap
 function renderRuler() {
   const r = $('tpRuler');
   r.replaceChildren();
@@ -2009,8 +1773,6 @@ async function addBookmark() {
   renderBookmarks();
 }
 
-/* ---------- cue sheets (per-team timed cues on an audio / video shot) ---------- */
-
 const CUE_EXAMPLE = {
   note: 'time เขียนได้เป็น "นาที:วินาที" เช่น "1:05" หรือ "1:05.5", "ชั่วโมง:นาที:วินาที" เช่น "1:02:03", หรือจำนวนวินาที เช่น 65 — นับจากต้นเพลง/วิดีโอ ชื่อทีมตั้งเองได้ เพิ่มหรือลบทีมได้',
   teams: {
@@ -2032,14 +1794,12 @@ const CUE_EXAMPLE = {
   },
 };
 
-// "1:05.5" / "1:02:03" / 65 -> seconds, or null when it is not a time
 function parseTime(v) {
   if (typeof v === 'number') return Number.isFinite(v) && v >= 0 ? v : null;
   if (typeof v !== 'string' || !/^\s*\d+(:\d{1,2}){0,2}(\.\d+)?\s*$/.test(v)) return null;
   return v.trim().split(':').reduce((sec, part) => sec * 60 + Number(part), 0);
 }
 
-// -> { team: [{ t, text }] } sorted by time; throws with the exact spot that is wrong
 function parseCues(text) {
   let j;
   try {
@@ -2087,8 +1847,6 @@ function downloadCueExample() {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-/* ---------- inspector (the shot being edited) ---------- */
-
 const editShot = () => (edit && findShot(edit.shotId)) || null;
 const editSrc = () => editShot()?.sources.find(s => s.id === edit.srcId) ?? null;
 
@@ -2107,16 +1865,13 @@ function fillGeom(s) {
       : inp.dataset.c ? s.crop[inp.dataset.c]
         : s.feather?.[inp.dataset.f] ?? 0;
   }
-  // the numbers stay folded away in the panel; the row only shows where the picture is
   $('geomSum').textContent = `${s.w}×${s.h} ที่ ${s.x}, ${s.y}`;
 }
 
-// short label for a source: its type, or its place in the running order of a song list
 const srcKind = (shot, s) => (isList(shot) && s.type === 'audio'
   ? `♪${shot.sources.filter(x => x.type === 'audio').indexOf(s) + 1}`
   : s.type);
 
-// dropdown of the scene's sources: pick one to edit, reorder, or delete
 function openSrcMenu() {
   const shot = editShot();
   if (!shot) return;
@@ -2136,7 +1891,6 @@ function openSrcMenu() {
         m.hidden = true;
         renderInsp();
       }),
-      // top of the list is in front on screen (and first in a song list)
       mini('▲', 'เลื่อนขึ้น (มาข้างหน้า)', () => moveSource(shot, k, -1), k === 0),
       mini('▼', 'เลื่อนลง (ไปข้างหลัง)', () => moveSource(shot, k, 1), k === shot.sources.length - 1),
       mini('×', 'ลบ source', async () => {
@@ -2168,17 +1922,14 @@ function renderInspBody() {
   $('plLoop').checked = !!shot.plLoop;
   if (document.activeElement !== $('plCross')) $('plCross').value = shot.cross ?? 3;
 
-  // the Sources button shows the selected source; the full list opens from it
   const k = shot.sources.findIndex(x => x.id === edit.srcId);
   const picked = shot.sources[k];
   $('srcBtn').replaceChildren(
     ...(picked ? [el('span', 'kind', srcKind(shot, picked)), el('span', 'name', picked.name)] : [el('span', 'name dim', 'ยังไม่มี')]),
     el('span', 'more', shot.sources.length > 1 ? `${k + 1}/${shot.sources.length} ▾` : '▾'),
   );
-  // reordering or deleting from the open list keeps it open
   if (!$('addMenu').hidden && $('addMenu').dataset.kind === 'src') openSrcMenu();
 
-  // cue sheets run on a file's clock, so only shots with an audio / video file take one
   $('splitBtn').hidden = shot.sources.filter(s => VISUAL.includes(s.type)).length < 2;
   $('cueGrp').hidden = !shot.sources.some(s => s.type === 'audio' || s.type === 'video');
   const teams = Object.entries(shot.cues ?? {});
@@ -2186,7 +1937,6 @@ function renderInspBody() {
 
   const s = editSrc();
   const vis = !!s && VISUAL.includes(s.type);
-  // the row is always there, so picking a source never changes the bar's height
   $('srcSet').classList.toggle('none', !s);
   $('geomBtn').hidden = !vis;
   if (!vis) {
@@ -2214,8 +1964,6 @@ function renderInspBody() {
   $('repickBtn').hidden = s.type !== 'screen';
 }
 
-/* ---------- move / resize on the preview ---------- */
-
 const MIN_SIZE = 16;
 const giz = el('div');
 giz.id = 'gizmo';
@@ -2226,7 +1974,6 @@ for (const h of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
   giz.append(i);
 }
 
-// frame the selected source, when its shot is the one showing in preview
 function placeGizmo() {
   const s = editSrc();
   const on = !!s && VISUAL.includes(s.type) && sel.pv.includes(edit.shotId);
@@ -2237,10 +1984,8 @@ function placeGizmo() {
   Object.assign(giz.style, { left: pct(s.x / W), top: pct(s.y / H), width: pct(s.w / W), height: pct(s.h / H) });
 }
 
-// how: 'move', or the edges being dragged ('n', 'se', ...)
 function startDrag(e, s, how) {
   e.preventDefault();
-  // screen pixels -> canvas pixels
   const k = cur.data.canvas.width / $('pvStage').getBoundingClientRect().width;
   const o = { x: s.x, y: s.y, w: s.w, h: s.h };
 
@@ -2253,7 +1998,6 @@ function startDrag(e, s, how) {
     } else {
       if (how.includes('e')) s.w = Math.max(MIN_SIZE, o.w + dx);
       if (how.includes('s')) s.h = Math.max(MIN_SIZE, o.h + dy);
-      // dragging the left / top edge keeps the opposite edge where it is
       if (how.includes('w')) {
         s.w = Math.max(MIN_SIZE, o.w - dx);
         s.x = o.x + o.w - s.w;
@@ -2284,7 +2028,6 @@ function onStagePointerDown(e) {
   const h = e.target.closest('#gizmo i');
   if (h) return startDrag(e, editSrc(), h.dataset.h);
 
-  // topmost source of the edited shot under the pointer, even if another layer covers it
   const box = document.elementsFromPoint(e.clientX, e.clientY)
     .map(x => x.closest('#pvStage .src'))
     .find(b => b && shot.sources.some(s => s.id === b.dataset.src));
@@ -2297,7 +2040,6 @@ function onStagePointerDown(e) {
   startDrag(e, s, 'move');
 }
 
-// everything showing this shot is rebuilt, then the change is saved
 async function shotChanged(shot) {
   rerender(sh => sh.id === shot.id);
   gcStreams();
@@ -2309,7 +2051,6 @@ async function shotChanged(shot) {
 async function addSource(shot, def) {
   if (def.src) await loadUrl(def.src);
   const s = newSource(cur.data.canvas, def);
-  // pictures go on top, in front; sounds go last, so a playlist grows in play order
   if (VISUAL.includes(s.type)) shot.sources.unshift(s);
   else shot.sources.push(s);
   edit.srcId = s.id;
@@ -2342,12 +2083,10 @@ function onGeomInput(inp) {
       s[k] = k === 'w' || k === 'h' ? Math.max(1, v) : v;
     }
   } else if (inp.dataset.f) {
-    // the two fades of one axis may meet in the middle, but not cross
     const e = inp.dataset.f;
     s.feather ??= { l: 0, t: 0, r: 0, b: 0 };
     s.feather[e] = Math.max(0, Math.min(v, 100 - s.feather[OPPOSITE[e]]));
   } else {
-    // opposite edges may not crop away the whole picture
     const c = inp.dataset.c;
     s.crop[c] = Math.max(0, Math.min(v, 99 - s.crop[OPPOSITE[c]]));
   }
@@ -2367,12 +2106,10 @@ function fitSource() {
   renderInsp();
 }
 
-// crop (in %) that makes a source fill a box of the given aspect ratio, cut evenly from both sides
 function fillCrop(s, boxAspect) {
   const { width: W, height: H } = cur.data.canvas;
   const m = stages.pv.el.querySelector(`[data-src="${s.id}"] .view > *`);
   const iw = m && (m.naturalWidth || m.videoWidth);
-  // until the picture has loaded, assume it has the shape of the canvas
   const a = iw ? iw / (m.naturalHeight || m.videoHeight) : W / H;
   const cut = v => Math.round((1 - v) / 2 * 1000) / 10;
   return a > boxAspect
@@ -2380,13 +2117,8 @@ function fillCrop(s, boxAspect) {
     : { l: 0, r: 0, t: cut(a / boxAspect), b: cut(a / boxAspect) };
 }
 
-// how wide the blend between the two pictures is, as a share of the screen
 const BLEND = 0.3;
 
-// Lay out the scene's first two pictures as one blended split. The front one (a)
-// takes the left / top side and fades into the other across the middle.
-//   'lr' | 'tb'  each picture gets its half plus half the blend, cropped to fill it
-//   'd1' | 'd2'  both stay full-screen; a is cut along a diagonal ("/" or "\")
 async function splitBlend(mode) {
   const shot = editShot();
   const [a, b] = shot.sources.filter(s => VISUAL.includes(s.type));
@@ -2397,7 +2129,6 @@ async function splitBlend(mode) {
     delete s.feather;
     delete s.diag;
   }
-  // share of a's own box that lies in the overlap, i.e. how far its fade must reach
   const reach = Math.round(BLEND / (0.5 + BLEND / 2) * 1000) / 10;
   if (mode === 'lr') {
     const w = Math.round(W * (0.5 + BLEND / 2));
@@ -2410,7 +2141,6 @@ async function splitBlend(mode) {
     Object.assign(b, { y: H - h, h, crop: fillCrop(b, W / h) });
     a.feather = { l: 0, t: 0, r: 0, b: reach };
   } else {
-    // "/" keeps a's top-left corner, "\" keeps its bottom-left corner
     a.diag = { to: mode === 'd1' ? 'bottom right' : 'top right', soft: BLEND * 100 };
   }
   regeom(a);
@@ -2434,8 +2164,6 @@ function openSplitMenu() {
   placeMenu($('splitBtn').getBoundingClientRect());
 }
 
-/* ---------- add menu (pick a source) ---------- */
-
 function menuItem(kind, name, fn) {
   const b = el('button');
   b.append(el('span', 'kind', kind), el('span', 'name', name));
@@ -2443,12 +2171,9 @@ function menuItem(kind, name, fn) {
   return b;
 }
 
-// onPick(def) receives the chosen source definition (null = empty shot)
-// sections of the add menu the user has folded shut; everything starts open
 const MENU_CLOSED_KEY = 'sgtobs-menu-closed';
 const menuClosed = new Set(JSON.parse(localStorage.getItem(MENU_CLOSED_KEY) ?? '[]'));
 
-// one foldable group of the add menu: a header that opens / closes the rows under it
 function menuSection(key, title, rows) {
   const sec = el('section', menuClosed.has(key) ? 'sec closed' : 'sec');
   const head = el('button', 'secHead');
@@ -2457,7 +2182,6 @@ function menuSection(key, title, rows) {
     if (!sec.classList.toggle('closed')) menuClosed.delete(key);
     else menuClosed.add(key);
     localStorage.setItem(MENU_CLOSED_KEY, JSON.stringify([...menuClosed]));
-    // the menu changed height: keep it sitting against its button
     placeMenu($('addMenu')._anchor, $('addMenu').dataset.kind);
   };
   const body = el('div', 'secBody');
@@ -2498,7 +2222,6 @@ async function openAddMenu(btn, onPick, withEmpty) {
     if (!devs.length) {
       rows = [el('p', 'dim', 'ไม่พบอุปกรณ์')];
     } else if (!devs[0].label) {
-      // labels stay blank until the user grants access once
       rows = [menuItem('+', 'อนุญาตเพื่อแสดงรายการ…', async () => {
         const st = await navigator.mediaDevices.getUserMedia({ [ask]: true });
         st.getTracks().forEach(t => t.stop());
@@ -2511,7 +2234,6 @@ async function openAddMenu(btn, onPick, withEmpty) {
     items.push(menuSection(type, head, rows));
   }
 
-  // files from media/, one section per kind; kinds with no files are left out
   const media = await listMedia(cur.dir);
   for (const [kind, title] of FILE_GROUPS) {
     const files = media.filter(f => f.kind === kind);
@@ -2525,8 +2247,6 @@ async function openAddMenu(btn, onPick, withEmpty) {
   placeMenu(btn.getBoundingClientRect());
 }
 
-// show the menu above the anchor rect, or below it when there is no room above;
-// kind names what the menu is showing, for code that needs to refresh it in place
 function placeMenu(r, kind = '') {
   const m = $('addMenu');
   m._anchor = r;
@@ -2537,8 +2257,6 @@ function placeMenu(r, kind = '') {
   m.style.top = `${Math.max(8, r.top - h - 6 >= 8 ? r.top - h - 6 : Math.min(r.bottom + 6, innerHeight - h - 8))}px`;
 }
 
-/* ---------- theme (dark / light), remembered per browser ---------- */
-
 const THEME_KEY = 'sgtbs-theme';
 const isLight = () => document.documentElement.dataset.theme === 'light';
 const themeLabel = () => (isLight() ? 'ธีมมืด' : 'ธีมสว่าง');
@@ -2548,15 +2266,12 @@ function setTheme(light) {
   else delete document.documentElement.dataset.theme;
   try {
     localStorage.setItem(THEME_KEY, light ? 'light' : 'dark');
-  } catch { /* private window: the choice just won't be remembered */ }
+  } catch { }
   $('themeBtn').textContent = `◐ ${themeLabel()}`;
 }
 
 const toggleTheme = () => setTheme(!isLight());
 
-/* ---------- init ---------- */
-
-// wrap handlers so failures surface in the UI instead of the console only
 function guard(fn) {
   return async (...a) => {
     try {
@@ -2615,7 +2330,6 @@ $('plCross').onchange = guard(async () => {
 $('goBtn').onclick = guard(go);
 $('blackBtn').onclick = () => {
   toggleBlack();
-  // a focused button would also be pressed by the Space meant for GO
   $('blackBtn').blur();
 };
 $('unmute').onclick = unmute;
@@ -2628,12 +2342,10 @@ $('cdUrl').onfocus = () => $('cdUrl').select();
 $('cdTeam').onchange = renderCdPanel;
 
 $('tpSeek').onpointerdown = () => { tpDrag = true; };
-// a click that leaves the value where it was fires no change event: end the drag on release
 for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { tpDrag = false; });
 $('tpSeek').oninput = () => seekTo(Number($('tpSeek').value));
 $('tpSeek').onchange = () => {
   tpDrag = false;
-  // a focused slider would swallow Space / Enter meant for Go
   $('tpSeek').blur();
 };
 $('bmAdd').onclick = guard(addBookmark);
@@ -2641,7 +2353,6 @@ $('tpPick').onchange = () => {
   pickFile($('tpPick').value);
   $('tpPick').blur();
 };
-// the bar starts closed, to leave the stages as much room as possible
 $('tpToggle').onclick = () => {
   const open = $('transport').hidden;
   $('transport').hidden = !open;
@@ -2650,7 +2361,6 @@ $('tpToggle').onclick = () => {
   $('tpToggle').blur();
 };
 new ResizeObserver(renderRuler).observe($('tpRuler'));
-// lets the GO column match the screens' height (see #takeCol in style.css)
 new ResizeObserver(() => $('stages').style.setProperty('--stageH', `${$('pvStage').offsetHeight}px`)).observe($('pvStage'));
 
 $('cueBtn').onclick = () => {
@@ -2675,7 +2385,6 @@ $('loopOn').onchange = guard(async () => {
   const src = editSrc();
   if ($('loopOn').checked) src.loop = true;
   else delete src.loop;
-  // switch it on whatever is already playing, without restarting it
   for (const st of Object.values(stages)) {
     for (const m of st.el.querySelectorAll(`[data-sid="${src.id}"]`)) m.loop = !!src.loop;
   }
@@ -2686,13 +2395,11 @@ $('plLoop').onchange = guard(async () => {
   const was = isList(shot);
   if ($('plLoop').checked) shot.plLoop = true;
   else delete shot.plLoop;
-  // without Playlist ticked, Loop is what switches the songs between "in turn" and "all at once"
   if (was !== isList(shot)) await shotChanged(shot);
   else await save();
 });
 $('cueFile').onchange = guard(async () => {
   const f = $('cueFile').files[0];
-  // let the same file be picked again after it has been fixed
   $('cueFile').value = '';
   if (f) await setCues(await f.text());
 });
@@ -2702,7 +2409,6 @@ function openCuePaste() {
   $('cueDlg').showModal();
 }
 $('cueOk').onclick = async () => {
-  // a toast would sit behind the dialog, so report bad JSON inside it
   try {
     await setCues($('cueText').value);
     $('cueDlg').close();
@@ -2714,14 +2420,11 @@ $('cueCancel').onclick = () => $('cueDlg').close();
 
 $('askYes').onclick = () => askDone?.(true);
 $('askNo').onclick = () => askDone?.(false);
-// a click on the dimmed area around the box
 $('askDlg').onclick = e => { if (e.target === $('askDlg')) askDone?.(false); };
-// closed some other way (Esc)
 $('askDlg').addEventListener('close', () => askDone?.(false));
 
 setInterval(countdownTick, 200);
 
-// neither library is needed to run a show, so load them without holding up the page
 loadScript(PEERJS_URL).then(startPeer, () => setPeerState('nolib'));
 loadScript(QR_URL).then(() => { if (!$('cdPanel').hidden) renderCdPanel(); }, e => console.error(e));
 
@@ -2731,7 +2434,6 @@ $('srcBtn').onclick = () => {
 };
 $('addSrcBtn').onclick = guard(() => openAddMenu($('addSrcBtn'), def => addSource(editShot(), def), false));
 $('fitBtn').onclick = guard(fitSource);
-// the picture settings open from a button, like the Sources list, and stay open while editing
 $('geomBtn').onclick = () => {
   const p = $('geomPanel');
   p.hidden = !p.hidden;
@@ -2765,10 +2467,8 @@ $('shotName').oninput = () => {
 $('srcName').oninput = () => {
   const s = editSrc();
   const v = $('srcName').value.trim();
-  // an empty box keeps the old name rather than leaving a nameless source
   if (!s || !v) return;
   s.name = v;
-  // the countdown and seek bar read the name off the media that is already playing
   for (const st of Object.values(stages)) {
     for (const m of st.el.querySelectorAll(`[data-sid="${s.id}"]`)) m.dataset.name = v;
   }
@@ -2783,7 +2483,6 @@ $('shotAbbr').oninput = () => {
   const shot = editShot();
   if (!shot) return;
   const v = $('shotAbbr').value.trim();
-  // empty = go back to the label made from the name
   if (v) shot.abbr = v;
   else delete shot.abbr;
   const t = document.querySelector(`#layers .shot[data-id="${shot.id}"] .abbr`);
@@ -2816,7 +2515,6 @@ $('shotName').onkeydown = e => {
 
 for (const inp of document.querySelectorAll('#geom input')) {
   inp.oninput = () => onGeomInput(inp);
-  // show the clamped value once editing ends
   inp.onchange = renderInsp;
 }
 
@@ -2824,7 +2522,6 @@ for (const b of document.querySelectorAll('.trans')) b.onclick = () => setTrans(
 
 document.addEventListener('pointerdown', e => {
   if (!e.target.closest('#cdPanel, #cdBtn, #roomBtn')) $('cdPanel').hidden = true;
-  // dragging on Preview is part of editing the picture, so it leaves the panel open
   if (!e.target.closest('#geomPanel, #geomBtn, #pvStage')) {
     $('geomPanel').hidden = true;
     $('geomBtn').classList.remove('on');
@@ -2834,14 +2531,11 @@ document.addEventListener('pointerdown', e => {
   capture = null;
 });
 
-// Ctrl+key = shot shortcut, Space / Enter = Go
 document.addEventListener('keydown', e => {
   if (!cur || e.repeat) return;
-  // while a dialog is up, keys belong to it (Enter must not fire GO behind it)
   if (document.querySelector('dialog[open]')) return;
   if (capture) return guard(onCaptureKey)(e);
   if (e.target.closest('input, textarea, select, [contenteditable]')) return;
-  // Ctrl+Z / Ctrl+Y undo unless the user has given that key to a scene
   const z = e.code === 'KeyZ' ? (e.shiftKey ? redo : undo) : e.code === 'KeyY' ? redo : null;
   if (e.ctrlKey && !e.metaKey && !e.altKey) {
     if (runHotkey(e.code)) e.preventDefault();
@@ -2855,7 +2549,6 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     return guard(z)();
   }
-  // arrows, and the PageUp / PageDown that presentation clickers send, turn the PDF
   const turn = { ArrowRight: 1, PageDown: 1, ArrowLeft: -1, PageUp: -1 }[e.code];
   if (turn && !e.metaKey && !e.altKey) {
     if (pdfKey(turn)) e.preventDefault();
@@ -2868,7 +2561,6 @@ document.addEventListener('keydown', e => {
   }
   if (e.code !== 'Space' && e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
   e.preventDefault();
-  // otherwise the key would also re-click whichever button has focus
   if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
   go();
 });
@@ -2892,7 +2584,6 @@ guard(async () => {
   try {
     await resumeProject();
   } catch (e) {
-    // moved or deleted since: just stay on the home page
     sessionStorage.removeItem(OPEN_KEY);
     throw e;
   }

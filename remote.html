@@ -23,7 +23,6 @@
     display: flex; flex-direction: column;
     font-family: "Noto Sans Thai", -apple-system, "Segoe UI", Arial, sans-serif;
     background: var(--bg); color: var(--text); font-size: 15px;
-    /* a remote is tapped, never scrolled or zoomed by accident */
     overscroll-behavior: none; user-select: none; -webkit-user-select: none; touch-action: manipulation;
   }
   [hidden] { display: none !important; }
@@ -46,7 +45,6 @@
   .layer { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; }
   .layer + .layer { border-top: 1px solid var(--border); }
   .no { flex: 0 0 22px; height: 64px; display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--dim); }
-  /* phones: one row that slides sideways; tablets: wraps into a grid */
   .row { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
   @media (min-width: 700px) { .row { flex-wrap: wrap; overflow: visible; } }
 
@@ -73,7 +71,6 @@
   #legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 
   footer { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); }
-  /* seek bar of the song / video, with its bookmarks */
   #tp { display: flex; flex-direction: column; gap: 6px; }
   #tpTop { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   #tpMode { font-size: 10px; font-weight: 700; letter-spacing: .1em; padding: 2px 6px; border-radius: 4px; }
@@ -84,8 +81,6 @@
   #tpPick { flex: 1; min-width: 0; font: inherit; font-weight: 600; color: var(--text); background: var(--surface-2); border: 1px solid #262626; border-radius: 8px; padding: 5px 8px; }
   #tpTrack { position: relative; height: 54px; }
   #tpSeek { display: block; width: 100%; height: 32px; margin: 0; accent-color: var(--accent); touch-action: pan-y; }
-  /* bookmark ticks over the slider, and the time scale under it; both inset so they line
-     up with where the middle of the thumb travels */
   #tpMarks { position: absolute; inset: 0 8px auto; height: 32px; pointer-events: none; }
   #tpMarks i { position: absolute; top: 6px; bottom: 6px; width: 2px; margin-left: -1px; border-radius: 1px; background: #5eead4; }
   #tpRuler { position: absolute; inset: 32px 8px 0; pointer-events: none; }
@@ -109,7 +104,6 @@
   #go { flex: 1; height: 64px; font-size: 24px; font-weight: 800; letter-spacing: .12em; border: none; background: var(--grad); color: #fff; box-shadow: 0 6px 22px rgba(20,184,166,.45); }
 
 
-  /* asked for when the page was opened without a code in its address */
   #enter { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(320px, 100%); margin: 0 auto; }
   #enter p { margin: 0; color: #8a8a8a; line-height: 1.6; }
   #code { font: inherit; width: 100%; padding: 14px; font-size: 34px; font-weight: 800; letter-spacing: .14em; text-align: center; color: #ededed; background: #0a0a0a; border: 2px solid #262626; border-radius: 14px; font-variant-numeric: tabular-nums; }
@@ -117,7 +111,6 @@
   #enter button { font: inherit; width: 100%; padding: 14px; font-size: 18px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #0b8f80, #19c2ab 60%, #5eead4); border: none; border-radius: 14px; cursor: pointer; }
   #enter button:disabled { opacity: .4; }
 
-  /* notes the team wrote on the scenes now on Live / Preview */
   #notes { flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; padding: 8px 16px; background: rgba(20,184,166,.07); border-bottom: 1px solid var(--border); font-size: 14px; }
   #notes div { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
   #notes b { flex-shrink: 0; font-size: 10px; letter-spacing: .1em; padding: 2px 6px; border-radius: 4px; }
@@ -183,7 +176,6 @@
 <script>
 const $ = id => document.getElementById(id);
 
-// same room key as the countdown page: remote.html#<room>
 const room = location.hash.slice(1).split('/')[0];
 addEventListener('hashchange', () => location.reload());
 
@@ -199,26 +191,18 @@ function el(tag, cls, text) {
   return e;
 }
 
-/* ---------- link to the control page ---------- */
-
-// same browser as the control page: a channel that needs no network
 const chan = room ? new BroadcastChannel(`sgtobs-countdown-${room}`) : null;
-// other devices: a peer-to-peer connection, kept open and retried
 let conn = null;
 
-// Every command carries a random id, because in the control page's own browser it
-// arrives over both links and must only be carried out once.
 function send(cmd, more = {}) {
   const msg = { cmd, n: Math.random().toString(36).slice(2), ...more };
   chan?.postMessage(msg);
   if (conn?.open) conn.send(msg);
 }
 
-// the control page sends the countdown several times a second, so silence means it is gone
 let stale;
 function heard() {
   $('dot').classList.add('on');
-  // back after a drop-out: the last known state is still good until a new one arrives
   if (state) $('wait').hidden = true;
   clearTimeout(stale);
   stale = setTimeout(() => {
@@ -260,8 +244,6 @@ function connect() {
   peer.on('disconnected', retry);
 }
 
-/* ---------- drawing ---------- */
-
 let state = null;
 
 function tile(layer, sc) {
@@ -285,7 +267,6 @@ function render(st) {
     return;
   }
   $('proj').textContent = st.name;
-  // keep each row where the thumb left it while the tiles are redrawn
   const scroll = [...document.querySelectorAll('.row')].map(r => r.scrollLeft);
   $('layers').replaceChildren(...st.layers.map((scenes, i) => {
     const row = el('div', 'row');
@@ -313,13 +294,9 @@ function render(st) {
   if (st.pdf) $('page').replaceChildren(`${st.pdf.name} · หน้า `, el('b', '', st.pdf.page));
 }
 
-/* ---------- seek bar ---------- */
-
-// true while a finger is on the slider, so incoming positions do not fight it
 let dragging = false;
 let lastSeek = 0;
 
-// p: { mode: 'pv' | 'live', name, pos, dur } or null when there is nothing to seek
 function showSeek(p) {
   $('tp').hidden = !p;
   if (!p) {
@@ -341,12 +318,9 @@ function showSeek(p) {
   $('tpTime').textContent = `${fmt(Math.floor(at))} / −${fmt(p.dur - at)}`;
 }
 
-// length of the file on the bar; the scale and bookmark ticks are laid out against it
 let seekDur = 0;
 let seekMarks = [];
 
-// same scale as the control page: a line every 5 s and a label every 30 s, widened in
-// step for long files (and narrow screens) so the labels never overlap
 function drawRuler() {
   const r = $('tpRuler');
   r.replaceChildren();
@@ -401,10 +375,8 @@ function showMarks(marks) {
 }
 
 for (const ev of ['pointerdown', 'touchstart']) $('tpSeek').addEventListener(ev, () => { dragging = true; }, { passive: true });
-// a tap that leaves the value where it was fires no change event: end the drag on release
 for (const ev of ['pointerup', 'pointercancel', 'touchend', 'touchcancel']) addEventListener(ev, () => { dragging = false; }, { passive: true });
 $('tpSeek').oninput = () => {
-  // while sliding, a few seeks a second are plenty
   if (Date.now() - lastSeek < 150) return;
   lastSeek = Date.now();
   send('seek', { t: Number($('tpSeek').value) });
@@ -414,8 +386,6 @@ $('tpSeek').onchange = () => {
   send('seek', { t: Number($('tpSeek').value) });
 };
 
-/* ---------- controls ---------- */
-
 $('go').onclick = () => send('go');
 $('black').onclick = () => send('black');
 $('prev').onclick = () => send('page', { dir: -1 });
@@ -423,8 +393,6 @@ $('next').onclick = () => send('page', { dir: 1 });
 for (const b of document.querySelectorAll('#seg button')) b.onclick = () => send('trans', { t: b.dataset.t });
 
 
-// Opened without a code (typed address, bookmark): ask for the six digits shown on the
-// control page, then carry on as if the link had contained them.
 function askCode() {
   const KEY = 'sgtbs-last-code';
   const digits = () => $('code').value.replace(/\D/g, '').slice(0, 6);
@@ -441,13 +409,11 @@ function askCode() {
     e.preventDefault();
     if (digits().length !== 6) return;
     localStorage.setItem(KEY, digits());
-    // the page reloads itself when the address gains a code
     location.hash = digits();
   };
   $('code').focus();
 }
 
-// drop the code in the address and ask again (wrong code, or a different control page)
 $('recode').onclick = () => { location.hash = ''; };
 
 if (!room) {
@@ -456,9 +422,7 @@ if (!room) {
 } else {
   $('recode').hidden = false;
   chan.onmessage = e => onMessage(e.data);
-  // ask for the current state; over the peer link the control page sends it on connect
   send('hello');
-  // nothing heard after a few seconds: say so, and offer to change the code
   stale = setTimeout(() => { $('waitMsg').textContent = `ยังไม่พบหน้า control ของรหัส ${room} กำลังลองใหม่…`; }, 6000);
   const sc = document.createElement('script');
   sc.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';

@@ -1,5 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Backstage: a crew headset in the wings, between the curtains, under the working light. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#141414"/>
@@ -23,10 +22,8 @@
   <g clip-path="url(#tile)">
     <rect width="512" height="512" fill="url(#bg)"/>
 
-    <!-- light falling from above -->
     <path d="M226 0h60l110 512H116z" fill="url(#beam)"/>
 
-    <!-- curtains, drawn back to either side -->
     <path d="M0 0h150c-4 160-24 320-78 512H0z" fill="url(#left)"/>
     <path d="M512 0H362c4 160 24 320 78 512h72z" fill="url(#right)"/>
     <g fill="none" stroke="#000" stroke-opacity=".2" stroke-width="12" stroke-linecap="round">
@@ -36,7 +33,6 @@
       <path d="M408 -10c4 170 18 340 52 530"/>
     </g>
 
-    <!-- stage-crew headset: band, two ear cups, microphone on a boom -->
     <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
       <path d="M174 286v-14a82 82 0 0 1 164 0v14" stroke-width="26"/>
       <path d="M176 352c0 44 22 62 62 64" stroke-width="16"/>
