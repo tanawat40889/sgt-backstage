@@ -1066,6 +1066,8 @@ function meterElement(m, bus) {
   // files only: a microphone keeps its level when the music is lowered
   m._duck = new GainNode(ctx, { gain: duck ? DUCK : 1 });
   m._an.connect(m._gain).connect(m._duck).connect(bus);
+  // with a gain to fade, a looping file loops by hand so it can fade out and back in
+  if (m._loop) m.loop = false;
 }
 
 function meterStream(m, st, bus) {
@@ -1083,6 +1085,23 @@ function ramp(gainNode, from, to, sec) {
   g.cancelScheduledValues(t);
   g.setValueAtTime(from ?? g.value, t);
   g.linearRampToValueAtTime(to, t + sec);
+}
+
+// how long a looping song takes to fade out before it starts over, and to fade back in
+const LOOP_FADE = 2;
+// a quarter of a short song at most, so most of it still plays at full level
+const loopFade = m => Math.min(LOOP_FADE, (endOf(m) - (m._in ?? 0)) / 4 || 0);
+
+// an S-shaped fade: a straight ramp sounds like it drops away too soon
+function smoothRamp(gainNode, to, sec) {
+  const g = gainNode.gain;
+  const t = actx.currentTime;
+  const from = g.value;
+  g.cancelScheduledValues(t);
+  if (!(sec > 0.05)) return g.setValueAtTime(to, t);
+  const c = new Float32Array(64);
+  for (let i = 0; i < c.length; i++) c[i] = from + (to - from) * (1 - Math.cos(Math.PI * i / (c.length - 1))) / 2;
+  g.setValueCurveAtTime(c, t, sec);
 }
 
 // fade all sound of a live shot node; from null = from wherever it is now
@@ -1109,11 +1128,22 @@ function runPlaylist(tracks, cross, loop) {
       const solo = tracks.length === 1;
       // overlap is capped so a short track is never all crossfade
       const x = solo ? 0 : Math.min(cross, (endOf(a) - a._in) / 2 || 0);
+      if (solo && !isDone(a)) {
+        const f = loopFade(a);
+        if (!a._fading && f > 0 && endOf(a) - a.currentTime <= f) {
+          a._fading = true;
+          smoothRamp(a._gain, 0, endOf(a) - a.currentTime);
+        }
+        return;
+      }
       if (!isDone(a) && !(x > 0 && endOf(a) - a.currentTime <= x)) return;
       a.removeEventListener('timeupdate', watch);
       a.removeEventListener('ended', watch);
       const nxt = tracks[last ? 0 : k + 1];
-      if (isDone(a)) {
+      if (solo) {
+        a._fading = false;
+        smoothRamp(a._gain, 1, loopFade(a));
+      } else if (isDone(a)) {
         ramp(nxt._gain, 1, 1, 0);
       } else {
         ramp(a._gain, 1, 0, x);
@@ -1129,6 +1159,7 @@ function runPlaylist(tracks, cross, loop) {
     jump(k) {
       for (const t of tracks) {
         t.pause();
+        t._fading = false;
         ramp(t._gain, 1, 1, 0);
       }
       play(k, true);
@@ -1824,7 +1855,16 @@ function setTrim(m, s) {
   m._out = trimOut(s);
   m._loop = !!s.loop && !m._list;
   // the browser's own loop would go back to 0 and play the tail: loop by hand when trimmed
-  m.loop = m._loop && !m._in && !m._out;
+  m.loop = m._loop && !m._in && !m._out && !m._gain;
+}
+
+// a looping file with sound starts over by fading out, jumping back and fading in
+function loopBack(m) {
+  m.currentTime = m._in;
+  if (m._gain) {
+    m._fading = false;
+    smoothRamp(m._gain, 1, loopFade(m));
+  }
 }
 
 // list = a song in a playlist, which loops as part of its list, never on its own
@@ -1837,15 +1877,22 @@ function trimMedia(m, s, list) {
   let timer = 0;
   const check = () => {
     clearTimeout(timer);
-    if (m.paused || !Number.isFinite(m.duration) || !m._out) return;
+    const fades = m._loop && m._gain;
+    if (m.paused || !Number.isFinite(m.duration) || !(m._out || fades)) return;
     const left = endOf(m) - m.currentTime;
+    const f = fades ? loopFade(m) : 0;
+    if (fades && !m._fading && f > 0 && left <= f) {
+      m._fading = true;
+      smoothRamp(m._gain, 0, Math.max(0, left));
+    }
     if (left > 0.03) {
-      // timeupdate comes only a few times a second: stop on time, not up to 1/4 s late
-      if (left < 0.4) timer = setTimeout(check, left * 1000 / (m.playbackRate || 1));
+      // timeupdate comes only a few times a second: act on time, not up to 1/4 s late
+      const next = left > f ? left - f : left;
+      if (next < 0.4) timer = setTimeout(check, next * 1000 / (m.playbackRate || 1));
       return;
     }
     if (m._loop) {
-      m.currentTime = m._in;
+      loopBack(m);
       return;
     }
     m.pause();
@@ -1858,11 +1905,16 @@ function trimMedia(m, s, list) {
   m.addEventListener('seeking', () => {
     clearTimeout(timer);
     delete m.dataset.done;
+    // moved by hand while fading out: back to full
+    if (m._fading && endOf(m) - m.currentTime > loopFade(m)) {
+      m._fading = false;
+      smoothRamp(m._gain, 1, 0.1);
+    }
   });
-  // trimmed at the start only: back to the start point, not to 0
+  // looped by hand and the real end came first: start over the same way
   m.addEventListener('ended', () => {
     if (m._loop && !m.loop && !m.dataset.done) {
-      m.currentTime = m._in;
+      loopBack(m);
       tryPlay(m);
     }
   });
