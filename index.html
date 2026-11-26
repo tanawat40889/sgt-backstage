@@ -149,6 +149,11 @@
           <button id="pdfNext" title="หน้าถัดไป (→ หรือ PageDown)">▶</button>
         </div>
         <label id="loopLbl" title="เล่นจบแล้วเริ่มใหม่ไปเรื่อยๆ" hidden><input id="loopOn" type="checkbox">Loop</label>
+        <div id="trimGrp" class="grp" hidden title="ตัดช่วงต้นหรือท้ายของไฟล์ออก (วินาที) ไฟล์จริงไม่ถูกแก้">
+          <label>ตัดหน้า<input id="trimIn" type="number" min="0" step="0.5">วิ</label>
+          <label>ตัดท้าย<input id="trimOut" type="number" min="0" step="0.5">วิ</label>
+          <span id="trimLen" class="dim"></span>
+        </div>
         <span id="noGeom" class="dim" hidden>source เสียง ไม่มีการตั้งค่าตำแหน่ง</span>
         <button id="geomBtn" hidden title="ตำแหน่ง ขนาด crop ขอบจาง และมุมโค้งของ source นี้">ปรับภาพ ▾</button>
         <span id="geomSum" class="dim"></span>

@@ -825,7 +825,7 @@ function shotNode(shot, mode) {
         a.dataset.sid = s.id;
         if (starts.has(s.id)) a.currentTime = starts.get(s.id);
         // in a playlist the list loops as a whole, not each song
-        a.loop = !!s.loop && !inList;
+        trimMedia(a, s, inList);
         meterElement(a, bus());
         if (inList) {
           // setStage must not start these; runPlaylist does, in order
@@ -858,8 +858,8 @@ function shotNode(shot, mode) {
       m.dataset.name = s.name;
       m.dataset.shot = shot.id;
       m.dataset.sid = s.id;
-      if (s.type === 'video') m.loop = !!s.loop;
       if (s.type === 'video') {
+        trimMedia(m, s, false);
         if (starts.has(s.id)) m.currentTime = starts.get(s.id);
         // Preview never plays a video: it holds one still frame (the start position),
         // which is all that placing and cropping it needs. Live and Output play.
@@ -1099,7 +1099,7 @@ function runPlaylist(tracks, cross, loop) {
   const play = (k, again) => {
     const my = ++gen;
     const a = tracks[k];
-    if (again) a.currentTime = 0;
+    if (again) a.currentTime = a._in ?? 0;
     tryPlay(a);
     const watch = () => {
       if (my !== gen || !a.isConnected) return;
@@ -1108,12 +1108,12 @@ function runPlaylist(tracks, cross, loop) {
       // a lone looping song just starts over; nothing to crossfade with
       const solo = tracks.length === 1;
       // overlap is capped so a short track is never all crossfade
-      const x = solo ? 0 : Math.min(cross, a.duration / 2 || 0);
-      if (!a.ended && !(x > 0 && a.duration - a.currentTime <= x)) return;
+      const x = solo ? 0 : Math.min(cross, (endOf(a) - a._in) / 2 || 0);
+      if (!isDone(a) && !(x > 0 && endOf(a) - a.currentTime <= x)) return;
       a.removeEventListener('timeupdate', watch);
       a.removeEventListener('ended', watch);
       const nxt = tracks[last ? 0 : k + 1];
-      if (a.ended) {
+      if (isDone(a)) {
         ramp(nxt._gain, 1, 1, 0);
       } else {
         ramp(a._gain, 1, 0, x);
@@ -1706,10 +1706,10 @@ function countdownTick() {
   let teams = null;
   for (const m of stages.live?.el.querySelectorAll('video[src], audio[src]') ?? []) {
     // skip playlist tracks still waiting their turn, and shots that are fading out
-    if (!Number.isFinite(m.duration) || m.ended || m.paused || m.closest('[data-out]')) continue;
-    const left = m.duration - m.currentTime;
+    if (!Number.isFinite(m.duration) || isDone(m) || m.paused || m.closest('[data-out]')) continue;
+    const left = Math.max(0, endOf(m) - m.currentTime);
     if (!best || left > best.left) {
-      best = { left, total: m.duration, name: m.dataset.name };
+      best = { left, total: endOf(m) - m._in, name: m.dataset.name };
       bestEl = m;
     }
     const cues = !teams && findShot(m.dataset.shot)?.cues;
@@ -1808,6 +1808,86 @@ const fmtPos = sec => fmtTime(Math.floor(sec));
 
 const srcOf = m => allShots().flatMap(sh => sh.sources).find(s => s.id === m.dataset.sid);
 
+/* ---------- trim: skip seconds at the start and / or end of a file ---------- */
+
+const trimIn = s => s?.trimIn ?? 0;
+const trimOut = s => s?.trimOut ?? 0;
+// where a playing file stops: its real end, less the trimmed tail
+const endOf = m => m.duration - (m._out ?? 0);
+// finished, either at its real end or at the trim point
+const isDone = m => m.ended || !!m.dataset.done;
+// length once trimmed (NaN until the file's length is known)
+const lenOf = s => Math.max(0, durOf(s) - trimIn(s) - trimOut(s));
+
+function setTrim(m, s) {
+  m._in = trimIn(s);
+  m._out = trimOut(s);
+  m._loop = !!s.loop && !m._list;
+  // the browser's own loop would go back to 0 and play the tail: loop by hand when trimmed
+  m.loop = m._loop && !m._in && !m._out;
+}
+
+// list = a song in a playlist, which loops as part of its list, never on its own
+function trimMedia(m, s, list) {
+  m._list = list;
+  setTrim(m, s);
+  m.addEventListener('loadedmetadata', () => {
+    if (m.currentTime < m._in) m.currentTime = m._in;
+  });
+  let timer = 0;
+  const check = () => {
+    clearTimeout(timer);
+    if (m.paused || !Number.isFinite(m.duration) || !m._out) return;
+    const left = endOf(m) - m.currentTime;
+    if (left > 0.03) {
+      // timeupdate comes only a few times a second: stop on time, not up to 1/4 s late
+      if (left < 0.4) timer = setTimeout(check, left * 1000 / (m.playbackRate || 1));
+      return;
+    }
+    if (m._loop) {
+      m.currentTime = m._in;
+      return;
+    }
+    m.pause();
+    m.dataset.done = 1;
+    // what a natural end sends, so a playlist moves on the same way
+    m.dispatchEvent(new Event('ended'));
+  };
+  m.addEventListener('timeupdate', check);
+  m.addEventListener('play', () => delete m.dataset.done);
+  m.addEventListener('seeking', () => {
+    clearTimeout(timer);
+    delete m.dataset.done;
+  });
+  // trimmed at the start only: back to the start point, not to 0
+  m.addEventListener('ended', () => {
+    if (m._loop && !m.loop && !m.dataset.done) {
+      m.currentTime = m._in;
+      tryPlay(m);
+    }
+  });
+}
+
+// typed in the inspector: applied to every copy now playing, without restarting it
+async function setTrimOf(s, k, v) {
+  const d = durOf(s);
+  v = Math.max(0, Math.round(v * 10) / 10 || 0);
+  // keep at least a second of the file
+  const other = k === 'trimIn' ? trimOut(s) : trimIn(s);
+  if (Number.isFinite(d)) v = Math.min(v, Math.max(0, d - other - 1));
+  if (v) s[k] = v;
+  else delete s[k];
+  for (const st of Object.values(stages)) {
+    for (const m of st.el.querySelectorAll(`video[data-sid="${s.id}"], audio[data-sid="${s.id}"]`)) {
+      setTrim(m, s);
+      if (m.currentTime < m._in) m.currentTime = m._in;
+    }
+  }
+  if (starts.has(s.id) && starts.get(s.id) < trimIn(s)) starts.delete(s.id);
+  await save();
+  renderInsp();
+}
+
 function durOf(s) {
   if (!durs.has(s.src)) {
     durs.set(s.src, NaN);
@@ -1818,7 +1898,7 @@ function durOf(s) {
   return durs.get(s.src);
 }
 
-const tpPos = () => (tp.mode === 'live' ? tp.m.currentTime : starts.get(tp.s.id) ?? 0);
+const tpPos = () => (tp.mode === 'live' ? tp.m.currentTime : starts.get(tp.s.id) ?? trimIn(tp.s));
 
 // The selected shot wins, so a song can be lined up before it goes live;
 // with no file in the selected shot, the bar follows whatever is playing on Live.
@@ -1847,7 +1927,7 @@ function transportTarget(liveBest) {
     }
     // on Live: the chosen file, else the track that is playing, else the last one to finish
     const m = (tpPick && mine.find(x => x.dataset.sid === tpPick.sid))
-      ?? mine.findLast(x => !x.paused) ?? mine.findLast(x => x.ended);
+      ?? mine.findLast(x => !x.paused) ?? mine.findLast(isDone);
     return m && srcOf(m) ? { mode: 'live', m, s: srcOf(m), dur: m.duration, files } : null;
   }
   return liveBest && srcOf(liveBest)
@@ -1900,7 +1980,7 @@ function songListTick() {
     const rows = cur ? ids.map((id, i) => [i, id && findShot(id)]).filter(r => r[1]) : [];
     // rebuilt only when something shown has changed; times and highlight update every tick
     const key = rows.map(([i, sh]) => [i, sh.id, sh.name, isList(sh), sh.playlist && sh.cross, !!sh.plLoop,
-      ...sh.sources.map(s => `${s.id}:${s.name}:${isFile(s) ? durOf(s) : s.page ?? ''}`)].join('|')).join('||');
+      ...sh.sources.map(s => `${s.id}:${s.name}:${isFile(s) ? lenOf(s) : s.page ?? ''}`)].join('|')).join('||');
     if (box.dataset.key !== key) {
       box.dataset.key = key;
       box.replaceChildren(rows.length ? buildStageList(stage, rows) : el('p', 'dim', 'ว่าง'));
@@ -1908,14 +1988,14 @@ function songListTick() {
     if (stage !== 'live') continue;
     for (const li of box.querySelectorAll('li.file')) {
       const m = stages.live?.el.querySelector(`audio[data-sid="${li._src.id}"], video[data-sid="${li._src.id}"]`);
-      const on = !!m && !m.paused && !m.ended && !m.closest('[data-out]');
+      const on = !!m && !m.paused && !isDone(m) && !m.closest('[data-out]');
       // when a file starts, scroll its row to the middle of the list
       if (on && !li.classList.contains('on')) {
         const ol = li.parentNode;
         ol.scrollTop = li.offsetTop - (ol.clientHeight - li.offsetHeight) / 2;
       }
       li.classList.toggle('on', on);
-      li.lastChild.textContent = on ? `−${fmtTime(m.duration - m.currentTime)}` : fmtDur(durOf(li._src));
+      li.lastChild.textContent = on ? `−${fmtTime(endOf(m) - m.currentTime)}` : fmtDur(lenOf(li._src));
     }
   }
 }
@@ -1937,7 +2017,7 @@ function buildStageList(stage, rows) {
     for (const s of sh.sources) {
       const li = el('li', isFile(s) ? 'file' : '');
       li._src = s;
-      const info = isFile(s) ? fmtDur(durOf(s)) : s.type === 'pdf' ? `หน้า ${s.page ?? 1}` : '';
+      const info = isFile(s) ? fmtDur(lenOf(s)) : s.type === 'pdf' ? `หน้า ${s.page ?? 1}` : '';
       li.append(el('span', 'kind', srcKind(sh, s)), el('span', 'name', s.name), el('span', 'num', info));
       if (stage === 'live' && list && s.type === 'audio' && isFile(s)) {
         const k = songs.filter(isFile).indexOf(s);
@@ -1953,8 +2033,9 @@ function buildStageList(stage, rows) {
 
 function seekTo(t) {
   if (!tp) return;
-  // stop just short of the end, or the track would count as finished at once
-  t = Math.max(0, Math.min(t, tp.dur - 0.1));
+  // stay inside the trimmed part, and stop just short of its end, or the track would
+  // count as finished at once
+  t = Math.max(trimIn(tp.s), Math.min(t, tp.dur - trimOut(tp.s) - 0.1));
   if (tp.mode === 'pv') {
     starts.set(tp.s.id, t);
     // show the frame it will start on
@@ -2248,6 +2329,12 @@ function renderInspBody() {
   const loopable = !!s && (s.type === 'video' || (s.type === 'audio' && !isList(shot)));
   $('loopLbl').hidden = !loopable;
   $('loopOn').checked = !!s?.loop;
+  $('trimGrp').hidden = !s || !isFile(s);
+  if (s && isFile(s)) {
+    for (const k of ['trimIn', 'trimOut']) if (document.activeElement !== $(k)) $(k).value = s[k] ?? 0;
+    const len = lenOf(s);
+    $('trimLen').textContent = Number.isFinite(len) ? `เหลือ ${fmtDur(len)}` : '';
+  }
   $('noGeom').hidden = !s || vis || loopable;
   $('srcName').disabled = !s;
   if (document.activeElement !== $('srcName')) $('srcName').value = s?.name ?? '';
@@ -2731,13 +2818,17 @@ $('cueBtn').onclick = () => {
   placeMenu($('cueBtn').getBoundingClientRect());
 };
 
+for (const k of ['trimIn', 'trimOut']) {
+  $(k).onchange = guard(() => setTrimOf(editSrc(), k, Number($(k).value)));
+  $(k).onkeydown = e => { if (e.key === 'Enter' || e.key === 'Escape') $(k).blur(); };
+}
 $('loopOn').onchange = guard(async () => {
   const src = editSrc();
   if ($('loopOn').checked) src.loop = true;
   else delete src.loop;
   // switch it on whatever is already playing, without restarting it
   for (const st of Object.values(stages)) {
-    for (const m of st.el.querySelectorAll(`[data-sid="${src.id}"]`)) m.loop = !!src.loop;
+    for (const m of st.el.querySelectorAll(`[data-sid="${src.id}"]`)) setTrim(m, src);
   }
   await save();
 });
