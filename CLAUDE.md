@@ -52,7 +52,7 @@ IndexedDB `sgtobs` (recent folder handles), the room key and channel names, the 
 - The product was renamed away from "Wirecast". Keep Wirecast's vocabulary out of the UI (shot → scene, Clear Layer → ว่าง, Smooth → Fade, the GO button).
 - Bars and panels have fixed heights so the screens never jump while working; overflowing content scrolls sideways instead of wrapping.
 - Destructive actions go through `askDelete()`; general confirmations through `ask()`.
-- Comments explain why, not what.
+- No comments in code, in any form (`//`, `/* */`, `<!-- -->`, docstrings, `TODO`). Record the why in commit messages or in this file instead.
 - Removed on purpose; do not bring back without asking: Live-to-YouTube with a local Node/ffmpeg helper (commit `e86b5f4`, reverted in `4c6540a`), and a picture monitor on the remote.
 
 ## Verifying changes in the browser preview
